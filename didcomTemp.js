@@ -32,9 +32,12 @@ geotab.addin.didcomTemp = function () {
   function fmtDur(ms) { var m = Math.round(ms / 60000); return m < 60 ? m + '分' : Math.floor(m / 60) + '時間' + (m % 60) + '分'; }
   function fmtV(v) { return v == null ? '-' : v.toFixed(1) + '℃'; }
   function ago(d) { if (!d) return '-'; var m = Math.round((Date.now() - d) / 60000); return m < 1 ? 'たった今' : m < 60 ? m + '分前' : m < 1440 ? Math.floor(m / 60) + '時間前' : Math.floor(m / 1440) + '日前'; }
+  // 「Remote probe 1 temperature」/「リモートプローブ1温度」など英語・日本語どちらの名称にも対応
+  var PROBE_RE = /(remote\s*probe|リモート\s*プローブ|プローブ)\s*#?\s*([1-4])/i;
+  function isProbeTemp(name) { return PROBE_RE.test(name || '') && /(temperature|温度)/i.test(name || '') && !/(error|alarm|open|short|エラー|アラーム|断線|短絡)/i.test(name || ''); }
   function sensorLabel(name) {
-    var m = /remote probe\s*(\d)/i.exec(name || '');
-    return m ? '温度' + m[1] : name;
+    var m = PROBE_RE.exec(name || '');
+    return m ? '温度' + m[2] : name;
   }
   function call(method, params) { return new Promise(function (res, rej) { api.call(method, params, res, rej); }); }
   function multi(calls) { return new Promise(function (res, rej) { api.multiCall(calls, res, rej); }); }
@@ -47,7 +50,7 @@ geotab.addin.didcomTemp = function () {
 
   // ---------- データ取得（ライブ） ----------
   function findDiagnostics(query) {
-    var names = query ? ['%' + query + '%'] : ['%Remote probe%temperature%', '%温度%'];
+    var names = query ? ['%' + query + '%'] : ['%Remote probe%', '%リモート%プローブ%', '%プローブ%温度%'];
     return multi(names.map(function (n) { return ['Get', { typeName: 'Diagnostic', search: { name: n }, resultsLimit: 200 }]; }))
       .then(function (results) {
         var seen = {}, out = [];
@@ -60,11 +63,11 @@ geotab.addin.didcomTemp = function () {
     var ready = settings.diagnostics.length ? Promise.resolve() :
       findDiagnostics().then(function (list) {
         // 初回: Remote probe 1〜4 temperature を自動選択
-        settings.diagnostics = list.filter(function (d) { return /remote probe\s*\d\s*temperature/i.test(d.name); });
-        saveSettings();
+        settings.diagnostics = list.filter(function (d) { return isProbeTemp(d.name); });
+        if (settings.diagnostics.length) saveSettings();
       });
     return ready.then(function () {
-      if (!settings.diagnostics.length) throw new Error('温度センサーの診断項目が見つかりません。「設定」から対象の診断項目を選んでください。');
+      if (!settings.diagnostics.length) { var e = new Error('温度センサーの診断項目が自動検出できませんでした。「設定」から対象の診断項目を検索して選んでください。'); e.info = true; throw e; }
       var now = new Date(), from = new Date(now - hours * 3600e3);
       var calls = [['Get', { typeName: 'Device', search: { fromDate: now.toISOString() }, resultsLimit: 5000 }]];
       settings.diagnostics.forEach(function (d) {
@@ -231,7 +234,8 @@ geotab.addin.didcomTemp = function () {
     (demo ? loadDemo(hours) : loadLive(hours)).then(function (d) {
       data = d; showMsg(demo ? 'MyGeotab外で開いているため、デモデータを表示しています。' : '', true); render();
     }).catch(function (e) {
-      showMsg('データ取得に失敗しました：' + (e && e.message ? e.message : e));
+      if (e && e.info) showMsg(e.message, true);
+      else showMsg('データ取得に失敗しました：' + (e && e.message ? e.message : e));
     }).then(function () { loading = false; $('dt-refresh').disabled = false; });
   }
   function schedule() {
