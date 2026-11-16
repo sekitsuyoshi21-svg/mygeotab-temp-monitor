@@ -56,7 +56,11 @@
 #didcomTemp .dt-status.none { background: #9ca3af; }
 #didcomTemp .dt-ongoing { color: var(--ng); font-weight: 700; }
 
-#didcomTemp .dt-chart { width: 100%; min-height: 300px; position: relative; touch-action: pan-y; cursor: crosshair; }
+#didcomTemp .dt-chart { width: 100%; min-height: 300px; position: relative; touch-action: pan-y; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+#didcomTemp .dt-head-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+#didcomTemp .dt-btn-sm { padding: 3px 10px; font-size: 12px; }
+#didcomTemp .dt-btn[hidden] { display: none; }
+#didcomTemp .dt-legend .dt-hint { margin-left: auto; }
 #didcomTemp .dt-tip { position: absolute; z-index: 5; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0,0,0,.12); padding: 6px 10px; font-size: 12px; white-space: nowrap; line-height: 1.7; }
 #didcomTemp .dt-tip[hidden] { display: none; }

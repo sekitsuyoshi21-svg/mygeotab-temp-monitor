@@ -20,7 +20,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.3.0';
+  var VERSION = '0.4.0';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -284,43 +284,77 @@ geotab.addin.didcomTemp = function () {
     var chart = $('dt-chart');
     if (!v) { chart.innerHTML = '<div class="empty">車両を選択してください</div>'; $('dt-legend').innerHTML = ''; $('dt-stats').innerHTML = ''; return; }
 
-    var s = data.series[v.id] || {}, lines = [], all = [];
-    data.diagnostics.forEach(function (d, i) { var a = s[d.id]; if (a && a.length) { lines.push({ d: d, a: a, c: COLORS[i % COLORS.length] }); a.forEach(function (p) { all.push(p.v); }); } });
-    if (!all.length) { chart.innerHTML = '<div class="empty">期間内のデータがありません</div>'; return; }
+    var s = data.series[v.id] || {}, lines = [];
+    data.diagnostics.forEach(function (d, i) { var a = s[d.id]; if (a && a.length) lines.push({ d: d, a: a, c: COLORS[i % COLORS.length] }); });
+    if (!lines.length) {
+      chartCtx = null; zoom = null; updateZoomUi();
+      chart.innerHTML = '<div class="empty">期間内のデータがありません</div>'; $('dt-legend').innerHTML = ''; $('dt-stats').innerHTML = ''; return;
+    }
+
+    // 表示範囲（拡大中はその範囲。車両が変わった・期間外になった場合は全体に戻す）
+    var full0 = +data.from, full1 = +data.to;
+    if (zoom && (zoom.devId !== v.id || zoom.t1 <= full0 || zoom.t0 >= full1)) zoom = null;
+    var t0 = zoom ? Math.max(zoom.t0, full0) : full0, t1 = zoom ? Math.min(zoom.t1, full1) : full1;
+    updateZoomUi(t0, t1);
+
+    // 範囲内の点（線が途切れないよう前後1点も描画に含める）
+    var all = [];
+    lines.forEach(function (ln) {
+      var a = ln.a, i0 = 0, i1 = a.length - 1;
+      while (i0 < a.length && +a[i0].t < t0) i0++;
+      while (i1 >= 0 && +a[i1].t > t1) i1--;
+      ln.vis = i0 <= i1 ? a.slice(i0, i1 + 1) : [];
+      ln.draw = a.slice(Math.max(0, i0 - 1), Math.min(a.length, Math.max(i1, i0 - 1) + 2));
+      ln.vis.forEach(function (p) { all.push(p.v); });
+    });
+    var scaleVals = all.length ? all : [].concat.apply([], lines.map(function (ln) { return ln.draw.map(function (p) { return p.v; }); }));
+    if (!scaleVals.length) scaleVals = [settings.min, settings.max];
 
     // 表示幅に合わせて描画（縮小で文字が小さくならないように）
     var W = Math.max(360, Math.round(chart.clientWidth || 800)), H = 300, L = 44, R = 12, T = 12, B = 30;
-    var lo = Math.min.apply(null, all.concat(settings.min)) - 2, hi = Math.max.apply(null, all.concat(settings.max)) + 2;
-    var t0 = +data.from, t1 = +data.to;
+    var dmin = Math.min.apply(null, scaleVals), dmax = Math.max.apply(null, scaleVals), lo, hi;
+    if (zoom) { var pad = Math.max(0.5, (dmax - dmin) * 0.1); lo = dmin - pad; hi = dmax + pad; }   // 拡大中はデータに合わせる
+    else { lo = Math.min(dmin, settings.min) - 2; hi = Math.max(dmax, settings.max) + 2; }          // 全体表示はしきい値も含める
     var x = function (t) { return L + (t - t0) / (t1 - t0) * (W - L - R); };
     var y = function (val) { return T + (hi - val) / (hi - lo) * (H - T - B); };
-    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="温度推移グラフ">';
-    svg += '<rect x="' + L + '" y="' + y(settings.max) + '" width="' + (W - L - R) + '" height="' + (y(settings.min) - y(settings.max)) + '" fill="rgba(21,128,61,.08)"/>';
-    // ドア開の区間を背景に帯で表示（マウスを乗せると時刻を表示）
-    var doors = hasDoor() ? doorIntervals(v.id) : [], doorMs = 0;
+    var PW = W - L - R, PH = H - T - B;
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="温度推移グラフ">' +
+      '<defs><clipPath id="dt-clip"><rect x="' + L + '" y="' + T + '" width="' + PW + '" height="' + PH + '"/></clipPath></defs>';
+    svg += '<g clip-path="url(#dt-clip)"><rect x="' + L + '" y="' + y(settings.max) + '" width="' + PW + '" height="' + (y(settings.min) - y(settings.max)) + '" fill="rgba(21,128,61,.08)"/></g>';
+    // ドア開の区間を背景に帯で表示（表示範囲と重なる部分だけ集計）
+    var doors = hasDoor() ? doorIntervals(v.id) : [], doorsVis = [], doorMs = 0;
     doors.forEach(function (iv) {
       var s0 = Math.max(+iv.start, t0), s1 = Math.min(+iv.end, t1); if (s1 <= s0) return;
-      doorMs += iv.end - iv.start;
+      doorsVis.push(iv); doorMs += s1 - s0;
       var w = Math.max(2, x(s1) - x(s0));
-      svg += '<rect class="dt-door-band" x="' + x(s0).toFixed(1) + '" y="' + T + '" width="' + w.toFixed(1) + '" height="' + (H - T - B) + '" fill="' + DOOR_COLOR + '"/>';
+      svg += '<rect class="dt-door-band" x="' + x(s0).toFixed(1) + '" y="' + T + '" width="' + w.toFixed(1) + '" height="' + PH + '" fill="' + DOOR_COLOR + '"/>';
     });
-    var stepV = (hi - lo) > 20 ? 5 : 2;
-    for (var g = Math.ceil(lo / stepV) * stepV; g <= hi; g += stepV) {
+    var stepV = niceStep((hi - lo) / 6), dec = stepV < 1 ? 1 : 0;
+    for (var g = Math.ceil(lo / stepV) * stepV; g <= hi + 1e-9; g += stepV) {
       svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(g) + '" y2="' + y(g) + '" stroke="#e5e7eb"/>' +
-        '<text x="' + (L - 6) + '" y="' + (y(g) + 4) + '" font-size="11" text-anchor="end" fill="#6b7280">' + g + '</text>';
+        '<text x="' + (L - 6) + '" y="' + (y(g) + 4) + '" font-size="11" text-anchor="end" fill="#6b7280">' + g.toFixed(dec) + '</text>';
     }
     [settings.min, settings.max].forEach(function (th) {
+      if (th < lo || th > hi) return;
       svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(th) + '" y2="' + y(th) + '" stroke="#dc2626" stroke-dasharray="4 3"/>';
     });
-    var ticks = Math.max(2, Math.min(6, Math.floor((W - L - R) / 110)));
+    var ticks = Math.max(2, Math.min(6, Math.floor(PW / 110)));
     for (var k = 0; k <= ticks; k++) {
       var tt = t0 + (t1 - t0) * k / ticks;
-      svg += '<text x="' + x(tt) + '" y="' + (H - 8) + '" font-size="11" text-anchor="middle" fill="#6b7280">' + fmtT(new Date(tt)) + '</text>';
+      svg += '<text x="' + x(tt) + '" y="' + (H - 8) + '" font-size="11" text-anchor="' + (k === 0 ? 'start' : k === ticks ? 'end' : 'middle') + '" fill="#6b7280">' + fmtT(new Date(tt)) + '</text>';
     }
+    svg += '<g clip-path="url(#dt-clip)">';
     lines.forEach(function (ln) {
-      var pts = ln.a.map(function (p) { return x(+p.t).toFixed(1) + ',' + y(p.v).toFixed(1); }).join(' ');
+      var pts = ln.draw.map(function (p) { return x(+p.t).toFixed(1) + ',' + y(p.v).toFixed(1); }).join(' ');
       svg += '<polyline points="' + pts + '" fill="none" stroke="' + ln.c + '" stroke-width="1.8"/>';
+      // 拡大して点がまばらな場合は計測点にマーカーを表示
+      if (zoom && ln.vis.length && ln.vis.length <= PW / 12) {
+        ln.vis.forEach(function (p) { svg += '<circle cx="' + x(+p.t).toFixed(1) + '" cy="' + y(p.v).toFixed(1) + '" r="2.5" fill="' + ln.c + '"/>'; });
+      }
     });
+    svg += '</g>';
+    // ドラッグ選択の範囲（初期は非表示）
+    svg += '<rect class="dt-sel" x="0" y="' + T + '" width="0" height="' + PH + '" fill="rgba(37,99,235,.12)" stroke="rgba(37,99,235,.5)" style="display:none;pointer-events:none"/>';
     // ホバー用の縦線と点（初期は非表示）
     svg += '<g class="dt-hover" style="display:none;pointer-events:none"><line class="dt-hl" y1="' + T + '" y2="' + (H - B) + '" stroke="#6b7280" stroke-dasharray="3 3"/>' +
       lines.map(function (ln) { return '<circle r="4" fill="' + ln.c + '" stroke="#fff" stroke-width="1.5"/>'; }).join('') + '</g>';
@@ -328,13 +362,70 @@ geotab.addin.didcomTemp = function () {
     chartCtx = { W: W, H: H, L: L, R: R, T: T, B: B, t0: t0, t1: t1, x: x, y: y, lines: lines, doors: doors };
     $('dt-legend').innerHTML = lines.map(function (ln) { return '<span><i style="background:' + ln.c + '"></i>' + esc(sensorLabel(ln.d.name)) + '</span>'; }).join('') +
       '<span><i style="background:#dc2626"></i>しきい値</span>' +
-      (hasDoor() ? '<span><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア開</span>' : '');
+      (hasDoor() ? '<span><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア開</span>' : '') +
+      '<span class="dt-muted dt-hint">ドラッグで拡大 / ダブルクリックで全体表示</span>';
 
-    var avg = all.reduce(function (a, b) { return a + b; }, 0) / all.length;
-    var exMs = data.events.filter(function (e) { return e.devId === v.id; }).reduce(function (a, e) { return a + e.duration; }, 0);
-    $('dt-stats').innerHTML = [['最低', fmtV(Math.min.apply(null, all))], ['最高', fmtV(Math.max.apply(null, all))], ['平均', fmtV(avg)], ['逸脱時間合計', exMs ? fmtDur(exMs) : 'なし']]
-      .concat(hasDoor() ? [['ドア開 回数', doors.length + '回'], ['ドア開 合計', doorMs ? fmtDur(doorMs) : 'なし']] : [])
+    // 統計は表示範囲で計算
+    var avg = all.length ? all.reduce(function (a, b) { return a + b; }, 0) / all.length : null;
+    var exMs = data.events.filter(function (e) { return e.devId === v.id; }).reduce(function (a, e) {
+      return a + Math.max(0, Math.min(+(e.end || e.lastT), t1) - Math.max(+e.start, t0));
+    }, 0);
+    $('dt-stats').innerHTML = [['最低', all.length ? fmtV(Math.min.apply(null, all)) : '-'], ['最高', all.length ? fmtV(Math.max.apply(null, all)) : '-'],
+      ['平均', fmtV(avg)], ['逸脱時間合計', exMs ? fmtDur(exMs) : 'なし']]
+      .concat(hasDoor() ? [['ドア開 回数', doorsVis.length + '回'], ['ドア開 合計', doorMs ? fmtDur(doorMs) : 'なし']] : [])
       .map(function (p) { return '<div><span>' + p[0] + '</span><strong>' + p[1] + '</strong></div>'; }).join('');
+  }
+
+  function niceStep(raw) {
+    var steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50];
+    for (var i = 0; i < steps.length; i++) if (steps[i] >= raw) return steps[i];
+    return 100;
+  }
+
+  // ---------- 拡大表示 ----------
+  var zoom = null, drag = null;   // zoom: {devId, t0, t1}
+  function updateZoomUi(t0, t1) {
+    var btn = $('dt-zoom-reset'); if (btn) btn.hidden = !zoom;
+    $('dt-range-label').textContent = (zoom ? '表示範囲 ' + fmtT(new Date(t0)) + '〜' + fmtT(new Date(t1)) + '（' + fmtDur(t1 - t0) + '）・' : '') +
+      '基準 ' + settings.min + '〜' + settings.max + '℃';
+  }
+  function resetZoom() { if (!zoom) return; zoom = null; hideHover(); renderDetail(); }
+  function plotPx(ev) {
+    var c = chartCtx, svgEl = $('dt-chart').querySelector('svg'); if (!c || !svgEl) return null;
+    var r = svgEl.getBoundingClientRect();
+    return (ev.clientX - r.left) * c.W / r.width;
+  }
+  function clampPx(px) { var c = chartCtx; return Math.max(c.L, Math.min(c.W - c.R, px)); }
+  function onDown(ev) {
+    if (!chartCtx || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+    var px = plotPx(ev); if (px == null || px < chartCtx.L || px > chartCtx.W - chartCtx.R) return;
+    drag = { x0: px, cx0: ev.clientX, moved: false };
+    try { $('dt-chart').setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+    onHover(ev);
+  }
+  function onMove(ev) {
+    if (drag && chartCtx) {
+      if (Math.abs(ev.clientX - drag.cx0) > 5) drag.moved = true;
+      if (drag.moved) {
+        var px = clampPx(plotPx(ev)), sel = $('dt-chart').querySelector('.dt-sel');
+        sel.setAttribute('x', Math.min(drag.x0, px).toFixed(1)); sel.setAttribute('width', Math.abs(px - drag.x0).toFixed(1));
+        sel.style.display = ''; hideHover(); ev.preventDefault(); return;
+      }
+    }
+    onHover(ev);
+  }
+  function onUp(ev) {
+    if (!drag) return;
+    var d = drag; drag = null;
+    var sel = $('dt-chart').querySelector('.dt-sel'); if (sel) sel.style.display = 'none';
+    if (!d.moved || !chartCtx) return;
+    var c = chartCtx, px = clampPx(plotPx(ev)), a = Math.min(d.x0, px), b = Math.max(d.x0, px);
+    if (b - a < 8) return;
+    var toT = function (p) { return c.t0 + (p - c.L) / (c.W - c.L - c.R) * (c.t1 - c.t0); };
+    var ta = toT(a), tb = toT(b), MIN = 5 * 60000;
+    if (tb - ta < MIN) { var mid = (ta + tb) / 2; ta = mid - MIN / 2; tb = mid + MIN / 2; }   // 最小5分
+    zoom = { devId: selectedId, t0: ta, t1: tb };
+    hideHover(); renderDetail();
   }
 
   // ---------- グラフのホバー表示 ----------
@@ -475,12 +566,16 @@ geotab.addin.didcomTemp = function () {
   function bind() {
     $('dt-refresh').onclick = refresh;
     var ch = $('dt-chart');
-    ch.addEventListener('pointermove', onHover);
-    ch.addEventListener('pointerdown', onHover);   // タブレットのタップ
-    ch.addEventListener('pointerleave', hideHover);
+    ch.addEventListener('pointerdown', onDown);    // ドラッグ開始（動かさなければタップ/クリックで値表示）
+    ch.addEventListener('pointermove', onMove);
+    ch.addEventListener('pointerup', onUp);
+    ch.addEventListener('pointercancel', function () { drag = null; var s = ch.querySelector('.dt-sel'); if (s) s.style.display = 'none'; });
+    ch.addEventListener('pointerleave', function () { if (!drag) hideHover(); });
+    ch.addEventListener('dblclick', resetZoom);
+    $('dt-zoom-reset').onclick = resetZoom;
     var rz = null;
     window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(function () { if (data) renderDetail(); }, 150); });
-    $('dt-hours').onchange = refresh;
+    $('dt-hours').onchange = function () { zoom = null; refresh(); };
     $('dt-auto').onchange = schedule;
     $('dt-filter').oninput = function () { if (data) render(); };
     $('dt-csv').onclick = exportCsv;
