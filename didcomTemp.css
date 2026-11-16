@@ -33,10 +33,10 @@
 #didcomTemp .dt-kpi.ng { background: #fef2f2; border-color: #fecaca; border-left-color: var(--ng); }
 #didcomTemp .dt-kpi.rise { background: #fff7ed; border-color: #fed7aa; border-left-color: #ea580c; }
 #didcomTemp .dt-kpi.ng.active { background: #dc2626; border-color: #dc2626; box-shadow: 0 2px 8px rgba(220,38,38,.35); }
-#didcomTemp .dt-kpi.rise.active { background: #fdba74; border-color: #fb923c; border-left-color: #ea580c; box-shadow: 0 2px 8px rgba(234,88,12,.2); }
+#didcomTemp .dt-kpi.rise.active { background: #fb923c; border-color: #f97316; border-left-color: #c2410c; box-shadow: 0 2px 8px rgba(234,88,12,.3); }
 #didcomTemp .dt-kpi.ng.active span, #didcomTemp .dt-kpi.ng.active strong { color: #fff; }
-/* 急上昇は薄めのオレンジ。読みやすいよう文字は濃い茶色 */
-#didcomTemp .dt-kpi.rise.active span, #didcomTemp .dt-kpi.rise.active strong { color: #7c2d12; }
+/* 急上昇は中間のオレンジ。読みやすいよう文字は濃い茶色 */
+#didcomTemp .dt-kpi.rise.active span, #didcomTemp .dt-kpi.rise.active strong { color: #431407; }
 #didcomTemp .dt-kpi.ng.active span, #didcomTemp .dt-kpi.rise.active span { font-weight: 700; }
 #didcomTemp .dt-status.rise { background: #ea580c; }
 #didcomTemp .dt-rate { font-size: 11px; color: var(--muted); margin-left: 6px; font-weight: 400; }
@@ -51,10 +51,10 @@
 #didcomTemp .dt-kpi.ok { border-left-color: var(--ok); }
 #didcomTemp .dt-kpi.ng { border-left-color: var(--ng); }
 #didcomTemp .dt-kpi.ng strong { color: var(--ng); }
-#didcomTemp .dt-kpi.stale { border-left-color: #64748b; background: #f8fafc; border-color: #e2e8f0; border-left-color: #64748b; }
-#didcomTemp .dt-kpi.stale.active { background: #cbd5e1; border-color: #94a3b8; border-left-color: #64748b; box-shadow: 0 2px 8px rgba(71,85,105,.15); }
-/* 薄めのグレー。読みやすいよう文字は濃いグレー */
-#didcomTemp .dt-kpi.stale.active span, #didcomTemp .dt-kpi.stale.active strong { color: #1e293b; }
+#didcomTemp .dt-kpi.stale { background: #f8fafc; border-color: #e2e8f0; border-left-color: #64748b; }
+#didcomTemp .dt-kpi.stale.active { background: #94a3b8; border-color: #64748b; border-left-color: #475569; box-shadow: 0 2px 8px rgba(71,85,105,.3); }
+/* 中間のグレー。読みやすいよう文字は濃いグレー */
+#didcomTemp .dt-kpi.stale.active span, #didcomTemp .dt-kpi.stale.active strong { color: #0f172a; }
 #didcomTemp .dt-kpi.stale.active span { font-weight: 700; }
 
 #didcomTemp .dt-main { display: grid; grid-template-columns: minmax(320px, 2fr) 3fr; gap: 12px; margin-bottom: 12px; }
