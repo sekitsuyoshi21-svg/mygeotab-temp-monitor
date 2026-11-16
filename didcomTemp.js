@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.6.0';
+  var VERSION = '0.7.0';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -304,7 +304,7 @@ geotab.addin.didcomTemp = function () {
     renderDetail();
   }
 
-  function renderDetail() {
+  function renderDetail(forceW) {
     var v = data.vehicles.filter(function (x) { return x.id === selectedId; })[0];
     $('dt-detail-title').textContent = v ? '温度推移：' + v.name : '温度推移';
     $('dt-range-label').textContent = '基準 ' + settings.min + '〜' + settings.max + '℃';
@@ -346,7 +346,7 @@ geotab.addin.didcomTemp = function () {
     if (!scaleVals.length) scaleVals = [settings.min, settings.max];
 
     // 表示幅に合わせて描画（縮小で文字が小さくならないように）
-    var W = Math.max(360, Math.round(chart.clientWidth || 800)), H = 300, L = 44, R = 12, T = 12, B = 30;
+    var W = forceW || Math.max(360, Math.round(chart.clientWidth || 800)), H = 300, L = 44, R = 12, T = 12, B = 30;
     var dmin = Math.min.apply(null, scaleVals), dmax = Math.max.apply(null, scaleVals), lo, hi;
     if (zoom) { var pad = Math.max(0.5, (dmax - dmin) * 0.1); lo = dmin - pad; hi = dmax + pad; }   // 拡大中はデータに合わせる
     else { lo = Math.min(dmin, settings.min) - 2; hi = Math.max(dmax, settings.max) + 2; }          // 全体表示はしきい値も含める
@@ -606,6 +606,161 @@ geotab.addin.didcomTemp = function () {
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   }
 
+  // ---------- レポート出力（PNG / PDF） ----------
+  var FONT = '"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif';
+  function jstStamp() { return new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-'); }
+  function fmtFull(d) { return d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+  function download(blob, name) {
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+  }
+
+  // 出力用の幅でグラフを描き直してSVG・凡例・統計を取り出し、画面表示は元に戻す
+  function captureChart(width) {
+    renderDetail(width);
+    var svgEl = $('dt-chart').querySelector('svg'), ctx = chartCtx, out = null;
+    if (svgEl) {
+      var c = svgEl.cloneNode(true);
+      Array.prototype.forEach.call(c.querySelectorAll('.dt-hover,.dt-sel'), function (n) { n.parentNode.removeChild(n); });
+      c.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      c.setAttribute('width', width); c.setAttribute('height', 300); c.setAttribute('font-family', FONT);
+      out = new XMLSerializer().serializeToString(c);
+    }
+    var legend = Array.prototype.filter.call($('dt-legend').querySelectorAll('span'), function (s) { return !s.classList.contains('dt-hint'); })
+      .map(function (s) { var i = s.querySelector('i'); return { color: i ? getComputedStyle(i).backgroundColor : '#999', dot: !!(i && i.classList.contains('dt-dot')), text: s.textContent.trim() }; });
+    var stats = Array.prototype.map.call($('dt-stats').querySelectorAll(':scope > div'), function (d) {
+      return { label: d.querySelector('span').textContent, value: d.querySelector('strong').textContent.replace(/\s+/g, ' ').trim(), est: d.classList.contains('dt-est'), rise: d.classList.contains('dt-rise') };
+    });
+    var noteEl = $('dt-stats').querySelector('.dt-est-note');
+    var res = { svg: out, legend: legend, stats: stats, note: noteEl ? noteEl.textContent : '', t0: ctx && ctx.t0, t1: ctx && ctx.t1,
+      sensors: ctx ? ctx.lines.map(function (ln) { return sensorLabel(ln.d.name); }) : [] };
+    renderDetail();
+    return res;
+  }
+  function loadImage(svg) {
+    return new Promise(function (res, rej) {
+      var img = new Image();
+      img.onload = function () { res(img); };
+      img.onerror = function () { rej(new Error('グラフ画像の作成に失敗しました。')); };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    });
+  }
+
+  function buildReportCanvas() {
+    var v = data && data.vehicles.filter(function (x) { return x.id === selectedId; })[0];
+    if (!v || !chartCtx) return Promise.reject(new Error('出力するグラフがありません。車両を選択してください。'));
+    var BW = 1100, PAD = 32, CW = BW - PAD * 2, S = 2;
+    var info = captureChart(CW);
+    if (!info.svg) return Promise.reject(new Error('出力するグラフがありません。'));
+    return loadImage(info.svg).then(function (img) {
+      var evs = (data.events || []).filter(function (e) { return e.devId === v.id && +e.start < info.t1 && +(e.end || e.lastT) > info.t0; });
+      var shown = evs.slice(0, 12);
+      var statCols = Math.max(1, Math.min(info.stats.length, Math.floor((CW + 10) / 130))), statRows = Math.ceil(info.stats.length / statCols);
+      var cv = document.createElement('canvas'); cv.width = BW * S; cv.height = 1400 * S;
+      var g = cv.getContext('2d'); g.scale(S, S);
+      g.fillStyle = '#fff'; g.fillRect(0, 0, BW, 1400);
+      function text(s, x, yy, size, color, weight, align) {
+        g.font = (weight || 400) + ' ' + size + 'px ' + FONT; g.fillStyle = color || '#1f2937'; g.textAlign = align || 'left'; g.fillText(s, x, yy);
+      }
+      var y = PAD;
+      text('温度記録レポート', PAD, y + 22, 22, '#111827', 700);
+      text('出力日時：' + fmtFull(new Date()), BW - PAD, y + 22, 12, '#6b7280', 400, 'right');
+      y += 34; g.fillStyle = '#0b5cad'; g.fillRect(PAD, y, CW, 2); y += 24;
+      text('車両：' + v.name + '　　センサー：' + info.sensors.join('、'), PAD, y, 14, '#1f2937', 700); y += 22;
+      text('期間：' + fmtFull(new Date(info.t0)) + ' 〜 ' + fmtFull(new Date(info.t1)) + '（' + fmtDur(info.t1 - info.t0) + '）　　基準温度：' +
+        settings.min + '〜' + settings.max + '℃' + (riseOn() ? '　　急上昇：+' + settings.riseRate + '℃/時以上' : ''), PAD, y, 13, '#374151'); y += 10;
+      g.drawImage(img, PAD, y, CW, 300); y += 308;
+      // 凡例
+      var lx = PAD;
+      info.legend.forEach(function (l) {
+        g.fillStyle = l.color;
+        if (l.dot) { g.beginPath(); g.arc(lx + 4, y + 9, 3.5, 0, Math.PI * 2); g.fill(); lx += 12; } else { g.fillRect(lx, y + 6, 16, 6); lx += 22; }
+        text(l.text, lx, y + 14, 12, '#374151'); lx += g.measureText(l.text).width + 18;
+      });
+      y += 30;
+      // 統計
+      var bw = (CW - (statCols - 1) * 10) / statCols;
+      info.stats.forEach(function (s, i) {
+        var cx = PAD + (i % statCols) * (bw + 10), cy = y + Math.floor(i / statCols) * 58;
+        g.fillStyle = s.est ? '#fffbeb' : s.rise ? '#fff7ed' : '#f3f4f6'; g.fillRect(cx, cy, bw, 50);
+        if (s.est || s.rise) {
+          g.strokeStyle = s.est ? '#f59e0b' : '#fdba74'; if (s.est) g.setLineDash([4, 3]);
+          g.strokeRect(cx + 0.5, cy + 0.5, bw - 1, 49); g.setLineDash([]);
+        }
+        text(s.label, cx + 10, cy + 18, 11, s.est ? '#92400e' : '#6b7280');
+        text(s.value, cx + 10, cy + 39, 15, s.rise ? '#c2410c' : s.est ? '#78350f' : '#111827', 700);
+      });
+      y += statRows * 58;
+      if (info.note) { text(info.note, PAD, y + 12, 11, '#92400e'); y += 22; }
+      y += 22;
+      // 逸脱履歴
+      text('温度逸脱履歴（この期間）', PAD, y, 14, '#111827', 700); y += 10;
+      var cols = [['センサー', 0], ['開始', 110], ['終了', 290], ['継続時間', 470], ['最高/最低', 610], ['ドア開', 750]];
+      g.fillStyle = '#f3f4f6'; g.fillRect(PAD, y, CW, 26);
+      cols.forEach(function (c) { text(c[0], PAD + 10 + c[1], y + 17, 12, '#6b7280', 700); });
+      y += 26;
+      if (!shown.length) { text('この期間の逸脱はありません', PAD + 10, y + 17, 12, '#6b7280'); y += 26; }
+      shown.forEach(function (e) {
+        var vals = [sensorLabel(e.diag.name), fmtFull(e.start), e.end ? fmtFull(e.end) : '継続中', fmtDur(e.duration), fmtV(e.peak), !hasDoor() ? '未設定' : e.door ? 'あり' : '-'];
+        vals.forEach(function (s, i) { text(s, PAD + 10 + cols[i][1], y + 17, 12, (i === 2 && !e.end) || i === 4 ? '#dc2626' : '#1f2937'); });
+        g.fillStyle = '#e5e7eb'; g.fillRect(PAD, y + 25, CW, 1); y += 26;
+      });
+      if (evs.length > shown.length) { text('ほか ' + (evs.length - shown.length) + ' 件（全件は「CSV出力」で確認できます）', PAD + 10, y + 16, 11, '#6b7280'); y += 22; }
+      y += 24;
+      text('MyGeotab 温度モニター v' + VERSION + '　｜　時刻は日本時間　｜　「（推定）」は計測点が無い範囲を前後の計測値から推定した値です', PAD, y, 10, '#9ca3af');
+      // 使った高さで切り出し
+      var outH = y + PAD - 12, out = document.createElement('canvas');
+      out.width = BW * S; out.height = outH * S;
+      out.getContext('2d').drawImage(cv, 0, 0);
+      return { canvas: out, name: '温度記録_' + v.name.replace(/[\\/:*?"<>|\s]/g, '') + '_' + jstStamp() };
+    });
+  }
+
+  // JPEG画像1枚をA4横に貼ったPDFを生成（外部ライブラリ不要）
+  function makePdf(jpg, imgW, imgH) {
+    var PW = 842, PH = 595, M = 24, sc = Math.min((PW - 2 * M) / imgW, (PH - 2 * M) / imgH);
+    var dw = imgW * sc, dh = imgH * sc, dx = (PW - dw) / 2, dy = PH - M - dh;   // 上寄せ
+    var content = 'q ' + dw.toFixed(2) + ' 0 0 ' + dh.toFixed(2) + ' ' + dx.toFixed(2) + ' ' + dy.toFixed(2) + ' cm /Im0 Do Q';
+    var parts = [], len = 0, offs = [];
+    function str(s) { var b = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 0xff; parts.push(b); len += b.length; }
+    function obj(n, body) { offs[n] = len; str(n + ' 0 obj\n' + body + '\nendobj\n'); }
+    str('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n');
+    obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+    obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+    obj(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PW + ' ' + PH + '] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>');
+    offs[4] = len;
+    str('4 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + imgW + ' /Height ' + imgH +
+      ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + jpg.length + ' >>\nstream\n');
+    parts.push(jpg); len += jpg.length;
+    str('\nendstream\nendobj\n');
+    obj(5, '<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream');
+    var xref = len, x = 'xref\n0 6\n0000000000 65535 f \n';
+    for (var n = 1; n <= 5; n++) x += ('0000000000' + offs[n]).slice(-10) + ' 00000 n \n';
+    str(x + 'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF\n');
+    return new Blob(parts, { type: 'application/pdf' });
+  }
+
+  function exportReport(kind) {
+    var btn = $(kind === 'pdf' ? 'dt-save-pdf' : 'dt-save-png'); btn.disabled = true;
+    buildReportCanvas().then(function (r) {
+      return new Promise(function (res, rej) {
+        if (kind === 'png') {
+          r.canvas.toBlob(function (b) { if (!b) return rej(new Error('画像の作成に失敗しました。')); download(b, r.name + '.png'); res(); }, 'image/png');
+        } else {
+          r.canvas.toBlob(function (b) {
+            if (!b) return rej(new Error('PDFの作成に失敗しました。'));
+            var fr = new FileReader();
+            fr.onload = function () { download(makePdf(new Uint8Array(fr.result), r.canvas.width, r.canvas.height), r.name + '.pdf'); res(); };
+            fr.onerror = function () { rej(new Error('PDFの作成に失敗しました。')); };
+            fr.readAsArrayBuffer(b);
+          }, 'image/jpeg', 0.92);
+        }
+      });
+    }).catch(function (e) { alert(e && e.message ? e.message : e); })
+      .then(function () { btn.disabled = false; });
+  }
+
   // ---------- 設定画面 ----------
   // 診断項目の検索・選択リスト（温度センサー用とドアセンサー用で共用）
   function Picker(prefix, defaultQuery) { this.p = prefix; this.q = defaultQuery; this.draft = []; }
@@ -672,6 +827,8 @@ geotab.addin.didcomTemp = function () {
     ch.addEventListener('pointerleave', function () { if (!drag) hideHover(); });
     ch.addEventListener('dblclick', resetZoom);
     $('dt-zoom-reset').onclick = resetZoom;
+    $('dt-save-png').onclick = function () { exportReport('png'); };
+    $('dt-save-pdf').onclick = function () { exportReport('pdf'); };
     var rz = null;
     window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(function () { if (data) renderDetail(); }, 150); });
     $('dt-hours').onchange = function () { zoom = null; refresh(); };

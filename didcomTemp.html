@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>温度モニター</title>
-  <link rel="stylesheet" href="didcomTemp.css?v=0.6.0">
+  <link rel="stylesheet" href="didcomTemp.css?v=0.7.0">
 </head>
 <body>
 <div id="didcomTemp">
@@ -60,6 +60,8 @@
         <span class="dt-head-right">
           <span id="dt-range-label" class="dt-muted"></span>
           <button id="dt-zoom-reset" class="dt-btn dt-btn-ghost dt-btn-sm" hidden>全体表示に戻す</button>
+          <button id="dt-save-png" class="dt-btn dt-btn-ghost dt-btn-sm" title="表示中のグラフと統計をPNG画像で保存">画像保存</button>
+          <button id="dt-save-pdf" class="dt-btn dt-btn-ghost dt-btn-sm" title="表示中のグラフと統計をPDF（A4横）で保存">PDF保存</button>
         </span>
       </div>
       <div id="dt-chart" class="dt-chart"></div>
@@ -140,6 +142,6 @@
     </div>
   </div>
 </div>
-<script src="didcomTemp.js?v=0.6.0"></script>
+<script src="didcomTemp.js?v=0.7.0"></script>
 </body>
 </html>
