@@ -68,6 +68,14 @@
 #didcomTemp .dt-head-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 #didcomTemp .dt-btn-sm { padding: 3px 10px; font-size: 12px; }
 #didcomTemp .dt-btn[hidden] { display: none; }
+#didcomTemp .dt-btn-save { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 13px; font-weight: 700;
+  border-radius: 6px; color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+#didcomTemp .dt-btn-save svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#didcomTemp .dt-btn-png { background: #0b5cad; border-color: #0b5cad; }
+#didcomTemp .dt-btn-png:hover { background: #094a8c; }
+#didcomTemp .dt-btn-pdf { background: #dc2626; border-color: #dc2626; }
+#didcomTemp .dt-btn-pdf:hover { background: #b91c1c; }
+#didcomTemp .dt-btn-save:disabled { opacity: .6; }
 #didcomTemp .dt-legend .dt-hint { margin-left: auto; }
 #didcomTemp .dt-legend i.dt-dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7280; }
 #didcomTemp .dt-tip { position: absolute; z-index: 5; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: 6px;
