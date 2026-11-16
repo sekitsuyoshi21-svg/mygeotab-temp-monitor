@@ -29,6 +29,15 @@
 
 #didcomTemp .dt-kpi.rise { border-left-color: #ea580c; }
 #didcomTemp .dt-kpi.rise strong { color: #ea580c; }
+/* 警告カード：0件は薄い色、1件以上は塗りつぶし */
+#didcomTemp .dt-kpi.ng { background: #fef2f2; border-color: #fecaca; border-left-color: var(--ng); }
+#didcomTemp .dt-kpi.rise { background: #fff7ed; border-color: #fed7aa; border-left-color: #ea580c; }
+#didcomTemp .dt-kpi.ng.active { background: #dc2626; border-color: #dc2626; box-shadow: 0 2px 8px rgba(220,38,38,.35); }
+#didcomTemp .dt-kpi.rise.active { background: #fdba74; border-color: #fb923c; border-left-color: #ea580c; box-shadow: 0 2px 8px rgba(234,88,12,.2); }
+#didcomTemp .dt-kpi.ng.active span, #didcomTemp .dt-kpi.ng.active strong { color: #fff; }
+/* 急上昇は薄めのオレンジ。読みやすいよう文字は濃い茶色 */
+#didcomTemp .dt-kpi.rise.active span, #didcomTemp .dt-kpi.rise.active strong { color: #7c2d12; }
+#didcomTemp .dt-kpi.ng.active span, #didcomTemp .dt-kpi.rise.active span { font-weight: 700; }
 #didcomTemp .dt-status.rise { background: #ea580c; }
 #didcomTemp .dt-rate { font-size: 11px; color: var(--muted); margin-left: 6px; font-weight: 400; }
 #didcomTemp .dt-rate.up { color: #ea580c; font-weight: 700; }

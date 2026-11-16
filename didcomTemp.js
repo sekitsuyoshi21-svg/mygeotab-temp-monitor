@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.8.0';
+  var VERSION = '0.8.2';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -279,7 +279,12 @@ geotab.addin.didcomTemp = function () {
     data.events = events;
 
     $('kpi-total').textContent = rows.length;
-    ['ok', 'ng', 'rise', 'stale'].forEach(function (k) { $('kpi-' + k).textContent = rows.filter(function (r) { return r.status === k; }).length; });
+    ['ok', 'ng', 'rise', 'stale'].forEach(function (k) {
+      var n = rows.filter(function (r) { return r.status === k; }).length;
+      $('kpi-' + k).textContent = n;
+      // 温度逸脱中・急上昇は1件以上でカードを塗りつぶして警告
+      if (k === 'ng' || k === 'rise') $('kpi-' + k).parentNode.classList.toggle('active', n > 0);
+    });
     $('kpi-events').textContent = events.length;
 
     if (!selectedId && rows.length) selectedId = rows[0].v.id;
