@@ -19,6 +19,7 @@ geotab.addin.didcomTemp = function () {
   var DEFAULTS = { profile: 'frozen', min: -25, max: -18, minExcursionMin: 5, staleMinutes: 30, diagnostics: [] };
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
+  var VERSION = '0.1.3';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -61,16 +62,21 @@ geotab.addin.didcomTemp = function () {
 
   // GeotabのKnownId（言語に依存しない固定ID）で検出。失敗時は名称検索にフォールバック。
   var PROBE_IDS = ['RemoteProbe1TemperatureId', 'RemoteProbe2TemperatureId', 'RemoteProbe3TemperatureId', 'RemoteProbe4TemperatureId'];
+  var detectInfo = '';
   function detectProbes() {
-    return multi(PROBE_IDS.map(function (id) { return ['Get', { typeName: 'Diagnostic', search: { id: id } }]; }))
-      .then(function (results) {
-        var out = [];
-        results.forEach(function (list, i) { if (list && list.length) out.push({ id: PROBE_IDS[i], name: list[0].name || PROBE_IDS[i] }); });
-        return out;
-      })
-      .catch(function () {
-        return findDiagnostics('プローブ').then(function (list) { return list.filter(function (d) { return isProbeTemp(d.name); }); });
-      });
+    var byId = Promise.all(PROBE_IDS.map(function (id) {
+      return call('Get', { typeName: 'Diagnostic', search: { id: id } })
+        .then(function (list) { return list && list.length ? { id: list[0].id || id, name: list[0].name || id } : null; },
+              function () { return null; });
+    })).then(function (r) { return r.filter(Boolean); });
+    return byId.then(function (found) {
+      if (found.length) { detectInfo = '固定ID ' + found.length + '件'; return found; }
+      return findDiagnostics('プローブ').then(function (list) {
+        var hit = list.filter(function (d) { return isProbeTemp(d.name); });
+        detectInfo = '固定ID 0件 / 名称検索 ' + list.length + '件中 ' + hit.length + '件該当';
+        return hit;
+      }, function (e) { detectInfo = '固定ID 0件 / 名称検索エラー：' + (e && e.message || e); return []; });
+    });
   }
 
   function loadLive(hours) {
@@ -81,7 +87,7 @@ geotab.addin.didcomTemp = function () {
         if (list.length) saveSettings();
       });
     return ready.then(function () {
-      if (!settings.diagnostics.length) { var e = new Error('温度センサーの診断項目が自動検出できませんでした。「設定」から対象の診断項目を検索して選んでください。'); e.info = true; throw e; }
+      if (!settings.diagnostics.length) { var e = new Error('温度センサーの診断項目が自動検出できませんでした（' + detectInfo + '）。「設定」から対象の診断項目を検索して選んでください。'); e.info = true; throw e; }
       var now = new Date(), from = new Date(now - hours * 3600e3);
       var calls = [['Get', { typeName: 'Device', search: { fromDate: now.toISOString() }, resultsLimit: 5000 }]];
       settings.diagnostics.forEach(function (d) {
@@ -336,7 +342,7 @@ geotab.addin.didcomTemp = function () {
 
   function start(a, isDemo) {
     api = a; demo = isDemo; root = $('didcomTemp');
-    var badge = $('dt-source'); badge.textContent = demo ? 'デモ' : 'ライブ'; badge.className = 'dt-badge' + (demo ? ' demo' : '');
+    var badge = $('dt-source'); badge.textContent = (demo ? 'デモ' : 'ライブ') + ' v' + VERSION; badge.className = 'dt-badge' + (demo ? ' demo' : '');
     var ready = demo ? Promise.resolve() : new Promise(function (res) {
       api.getSession(function (s) { storageKey = 'didcomTemp:' + s.database; res(); });
     });
