@@ -16,11 +16,13 @@ geotab.addin.didcomTemp = function () {
     chilled: { min: 0, max: 10 },
     constant: { min: 15, max: 25 }
   };
-  var DEFAULTS = { profile: 'frozen', min: -25, max: -18, minExcursionMin: 5, staleMinutes: 30, diagnostics: [], doorDiagnostics: [], doorInvert: false };
+  var DEFAULTS = { profile: 'frozen', min: -25, max: -18, minExcursionMin: 5, staleMinutes: 30, diagnostics: [], doorDiagnostics: [], doorInvert: false,
+    riseRate: 3, riseWindowMin: 60 };   // 急上昇：過去60分の変化が +3℃/時 以上
+  var RISE_COLOR = 'rgba(234,88,12,.35)';
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.5.0';
+  var VERSION = '0.6.0';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -162,6 +164,11 @@ geotab.addin.didcomTemp = function () {
           if (vi === 2 && h > 5 && h < 5.6) v += 9;                 // 荷積み時の逸脱（35分）
           if (vi === 4 && Math.abs(h - 9) < 0.06) v += 7;           // ドア開閉の一瞬（除外される）
           if (vi === 5 && h < 1.2) v += (1.2 - h) * 8;               // 現在も上昇中
+          if (vi === 1) {                                            // 範囲内だが急上昇中（冷凍機の故障の兆候）
+            if (h < 0.9) v += -3 + (0.9 - h) * 4;                    // 直近54分で +4℃/時
+            else if (h < 3) v -= 3;
+            else if (h < 3.5) v -= 3 * (3.5 - h) / 0.5;
+          }
           arr.push({ t: new Date(t), v: Math.round(v * 10) / 10 });
         }
         series[id][d.id] = arr;
@@ -221,24 +228,42 @@ geotab.addin.didcomTemp = function () {
     });
   }
 
+  // ---------- 温度の変化の速さ（℃/時） ----------
+  // 各計測点に p.r（過去 riseWindowMin 分の変化を1時間あたりに換算）を付与。期間が短すぎる場合は null。
+  function computeRates(a) {
+    var win = Math.max(10, settings.riseWindowMin || 60) * 60000, j = 0;
+    for (var i = 0; i < a.length; i++) {
+      var ti = +a[i].t;
+      while (j < i && +a[j].t < ti - win) j++;
+      var k = j < i ? j : i - 1;                                  // 期間内に前の点が無ければ直前の点（2倍の期間まで）
+      if (k < 0 || ti - +a[k].t > 2 * win || ti - +a[k].t < 10 * 60000) { a[i].r = null; continue; }
+      a[i].r = (a[i].v - a[k].v) / (ti - +a[k].t) * 3600e3;
+    }
+  }
+  function riseOn() { return (settings.riseRate || 0) > 0; }
+  function isRise(r) { return riseOn() && r != null && r >= settings.riseRate; }
+  function fmtRate(r) { return r == null ? '-' : (r >= 0 ? '+' : '') + r.toFixed(1) + '℃/時'; }
+
   function vehicleState(v) {
     var s = data.series[v.id] || {}, latest = [], last = null;
     data.diagnostics.forEach(function (d) {
       var arr = s[d.id]; if (!arr || !arr.length) return;
-      var p = arr[arr.length - 1]; latest.push({ diag: d, v: p.v, t: p.t });
+      var p = arr[arr.length - 1]; latest.push({ diag: d, v: p.v, t: p.t, r: p.r });
       if (!last || p.t > last) last = p.t;
     });
     var status = !latest.length ? 'none'
       : (Date.now() - last > settings.staleMinutes * 60000) ? 'stale'
-      : latest.some(function (l) { return isOut(l.v); }) ? 'ng' : 'ok';
+      : latest.some(function (l) { return isOut(l.v); }) ? 'ng'
+      : latest.some(function (l) { return isRise(l.r); }) ? 'rise' : 'ok';
     return { latest: latest, last: last, status: status };
   }
-  var STATUS_TEXT = { ok: '正常', ng: '逸脱', stale: '通信途絶', none: 'データなし' };
-  var STATUS_ORDER = { ng: 0, stale: 1, ok: 2, none: 3 };
+  var STATUS_TEXT = { ok: '正常', ng: '逸脱', rise: '急上昇', stale: '通信途絶', none: 'データなし' };
+  var STATUS_ORDER = { ng: 0, rise: 1, stale: 2, ok: 3, none: 4 };
 
   // ---------- 描画 ----------
   function render() {
     var filter = ($('dt-filter').value || '').trim();
+    Object.keys(data.series).forEach(function (dev) { Object.keys(data.series[dev]).forEach(function (k) { computeRates(data.series[dev][k]); }); });
     var rows = data.vehicles.map(function (v) { return Object.assign({ v: v }, vehicleState(v)); })
       .sort(function (a, b) { return STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.v.name.localeCompare(b.v.name); });
     var events = [];
@@ -254,13 +279,15 @@ geotab.addin.didcomTemp = function () {
     data.events = events;
 
     $('kpi-total').textContent = rows.length;
-    ['ok', 'ng', 'stale'].forEach(function (k) { $('kpi-' + k).textContent = rows.filter(function (r) { return r.status === k; }).length; });
+    ['ok', 'ng', 'rise', 'stale'].forEach(function (k) { $('kpi-' + k).textContent = rows.filter(function (r) { return r.status === k; }).length; });
     $('kpi-events').textContent = events.length;
 
     if (!selectedId && rows.length) selectedId = rows[0].v.id;
     $('dt-vehicles').innerHTML = rows.filter(function (r) { return !filter || r.v.name.indexOf(filter) >= 0; }).map(function (r) {
       var temps = r.latest.map(function (l) {
-        return '<span class="dt-temp' + (isOut(l.v) ? ' ng' : '') + '"><small>' + esc(sensorLabel(l.diag.name)) + '</small>' + fmtV(l.v) + '</span>';
+        var rate = r.status !== 'stale' && l.r != null
+          ? ' <span class="dt-rate' + (isRise(l.r) ? ' up' : '') + '">' + (l.r >= 0 ? '↑' : '↓') + fmtRate(l.r) + '</span>' : '';
+        return '<span class="dt-temp' + (isOut(l.v) ? ' ng' : '') + '"><small>' + esc(sensorLabel(l.diag.name)) + '</small>' + fmtV(l.v) + rate + '</span>';
       }).join('');
       return '<tr data-id="' + esc(r.v.id) + '"' + (r.v.id === selectedId ? ' class="selected"' : '') + '>' +
         '<td><span class="dt-status ' + r.status + '">' + STATUS_TEXT[r.status] + '</span></td>' +
@@ -352,9 +379,16 @@ geotab.addin.didcomTemp = function () {
       svg += '<text x="' + x(tt) + '" y="' + (H - 8) + '" font-size="11" text-anchor="' + (k === 0 ? 'start' : k === ticks ? 'end' : 'middle') + '" fill="#6b7280">' + fmtT(new Date(tt)) + '</text>';
     }
     svg += '<g clip-path="url(#dt-clip)">';
-    var markersShown = false;
+    var markersShown = false, riseShown = false;
     lines.forEach(function (ln) {
       var pts = ln.draw.map(function (p) { return x(+p.t).toFixed(1) + ',' + y(p.v).toFixed(1); }).join(' ');
+      // 急上昇の区間をオレンジの太い帯で強調（線の下に描く）
+      if (!estimated) ln.draw.forEach(function (p, i) {
+        if (i === 0 || !isRise(p.r)) return;
+        var q = ln.draw[i - 1]; riseShown = true;
+        svg += '<line x1="' + x(+q.t).toFixed(1) + '" y1="' + y(q.v).toFixed(1) + '" x2="' + x(+p.t).toFixed(1) + '" y2="' + y(p.v).toFixed(1) +
+          '" stroke="' + RISE_COLOR + '" stroke-width="8" stroke-linecap="round"/>';
+      });
       svg += '<polyline points="' + pts + '" fill="none" stroke="' + ln.c + '" stroke-width="1.8"' + (estimated ? ' stroke-dasharray="6 4"' : '') + '/>';
       // 計測点を常に表示（点が密集して線が見えにくくなる場合のみ省略）
       if (ln.vis.length && ln.vis.length <= PW / 4) {
@@ -378,6 +412,7 @@ geotab.addin.didcomTemp = function () {
       '<span><i style="background:#dc2626"></i>しきい値</span>' +
       (hasDoor() ? '<span><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア開</span>' : '') +
       (markersShown ? '<span><i class="dt-dot"></i>計測点</span>' : '') +
+      (riseShown ? '<span><i class="dt-rise-swatch" style="background:' + RISE_COLOR + '"></i>急上昇（+' + settings.riseRate + '℃/時以上）</span>' : '') +
       '<span class="dt-muted dt-hint">ドラッグで拡大 / ダブルクリックで全体表示</span>';
 
     // 統計は表示範囲で計算
@@ -394,9 +429,13 @@ geotab.addin.didcomTemp = function () {
     } else {
       tempStats = [['最低', '-'], ['最高', '-'], ['平均', '-']];
     }
-    $('dt-stats').innerHTML = tempStats.concat([['逸脱時間合計', exMs ? fmtDur(exMs) : 'なし']])
+    // 表示範囲内の最大上昇速度
+    var maxR = null, maxRT = null;
+    lines.forEach(function (ln) { ln.vis.forEach(function (p) { if (p.r != null && (maxR == null || p.r > maxR)) { maxR = p.r; maxRT = p.t; } }); });
+    var rateStat = ['最大上昇速度', maxR == null ? '-' : fmtRate(maxR) + ' <small class="dt-muted">' + fmtHM(maxRT) + '</small>', 0, isRise(maxR)];
+    $('dt-stats').innerHTML = tempStats.concat([rateStat, ['逸脱時間合計', exMs ? fmtDur(exMs) : 'なし']])
       .concat(hasDoor() ? [['ドア開 回数', doorsVis.length + '回'], ['ドア開 合計', doorMs ? fmtDur(doorMs) : 'なし']] : [])
-      .map(function (p) { return '<div' + (p[2] ? ' class="dt-est"' : '') + '><span>' + p[0] + '</span><strong>' + p[1] + '</strong></div>'; }).join('') +
+      .map(function (p) { return '<div' + (p[2] ? ' class="dt-est"' : p[3] ? ' class="dt-rise"' : '') + '><span>' + p[0] + '</span><strong>' + p[1] + '</strong></div>'; }).join('') +
       (estimated && est.length ? '<p class="dt-est-note">※ 表示範囲内に計測点がないため、最低・最高・平均は範囲の前後の計測値を直線で結んで推定した値です。</p>'
         : estimated ? '<p class="dt-est-note">※ 表示範囲内に計測点がなく、前後の計測値も離れすぎているため推定できません。</p>' : '');
   }
@@ -515,7 +554,8 @@ geotab.addin.didcomTemp = function () {
       if (!snapped || !p || Math.abs(p.t - t) > maxGap) { cir.style.display = 'none'; rows.push('<div>' + sw + label + '<span class="dt-muted">データなし</span></div>'); return; }
       cir.style.display = ''; cir.setAttribute('cx', c.x(+p.t).toFixed(1)); cir.setAttribute('cy', c.y(p.v).toFixed(1));
       var off = Math.abs(p.t - t) > 2 * 60000 ? ' <span class="dt-muted">(' + fmtHM(p.t) + ' 計測)</span>' : '';
-      rows.push('<div>' + sw + label + '<b' + (isOut(p.v) ? ' class="ng"' : '') + '>' + fmtV(p.v) + '</b>' + off + '</div>');
+      var rt = p.r != null ? ' <span class="dt-rate' + (isRise(p.r) ? ' up' : '') + '">' + fmtRate(p.r) + '</span>' : '';
+      rows.push('<div>' + sw + label + '<b' + (isOut(p.v) ? ' class="ng"' : '') + '>' + fmtV(p.v) + '</b>' + rt + off + '</div>');
     });
     if (hasDoor()) {
       var iv = c.doors.filter(function (d) { return t >= +d.start && t <= +d.end; })[0];
@@ -598,6 +638,7 @@ geotab.addin.didcomTemp = function () {
   function openSettings() {
     $('set-profile').value = settings.profile; $('set-min').value = settings.min; $('set-max').value = settings.max;
     $('set-minex').value = settings.minExcursionMin; $('set-stale').value = settings.staleMinutes;
+    $('set-rise').value = settings.riseRate; $('set-risewin').value = settings.riseWindowMin;
     $('set-door-invert').checked = !!settings.doorInvert;
     tempPicker.draft = (settings.diagnostics.length ? settings.diagnostics : (data ? data.diagnostics : [])).slice();
     doorPicker.draft = ((settings.doorDiagnostics || []).length ? settings.doorDiagnostics : (demo && data ? data.doorDiags : [])).slice();
@@ -609,6 +650,8 @@ geotab.addin.didcomTemp = function () {
     settings.min = parseFloat($('set-min').value); settings.max = parseFloat($('set-max').value);
     settings.minExcursionMin = Math.max(0, parseInt($('set-minex').value, 10) || 0);
     settings.staleMinutes = Math.max(1, parseInt($('set-stale').value, 10) || 30);
+    settings.riseRate = Math.max(0, parseFloat($('set-rise').value) || 0);
+    settings.riseWindowMin = Math.max(10, parseInt($('set-risewin').value, 10) || 60);
     if (!(settings.min < settings.max)) { alert('下限は上限より小さい値にしてください。'); return; }
     settings.doorInvert = $('set-door-invert').checked;
     if (!demo) {
