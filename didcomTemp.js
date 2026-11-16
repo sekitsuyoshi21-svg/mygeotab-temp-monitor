@@ -36,8 +36,8 @@ geotab.addin.didcomTemp = function () {
   var PROBE_RE = /(remote\s*probe|リモート\s*プローブ|プローブ)\s*#?\s*([1-4])/i;
   function isProbeTemp(name) { return PROBE_RE.test(name || '') && /(temperature|温度)/i.test(name || '') && !/(error|alarm|open|short|エラー|アラーム|断線|短絡)/i.test(name || ''); }
   function sensorLabel(name) {
-    var m = PROBE_RE.exec(name || '');
-    return m ? '温度' + m[2] : name;
+    var m = PROBE_RE.exec(name || '') || /RemoteProbe([1-4])TemperatureId/.exec(name || '');
+    return m ? '温度' + m[m.length - 1] : name;
   }
   function call(method, params) { return new Promise(function (res, rej) { api.call(method, params, res, rej); }); }
   function multi(calls) { return new Promise(function (res, rej) { api.multiCall(calls, res, rej); }); }
@@ -50,7 +50,7 @@ geotab.addin.didcomTemp = function () {
 
   // ---------- データ取得（ライブ） ----------
   function findDiagnostics(query) {
-    var names = query ? ['%' + query + '%'] : ['%Remote probe%', '%リモート%プローブ%', '%プローブ%温度%'];
+    var names = query ? ['%' + query + '%'] : ['%プローブ%', '%probe%'];
     return multi(names.map(function (n) { return ['Get', { typeName: 'Diagnostic', search: { name: n }, resultsLimit: 200 }]; }))
       .then(function (results) {
         var seen = {}, out = [];
@@ -59,12 +59,26 @@ geotab.addin.didcomTemp = function () {
       });
   }
 
+  // GeotabのKnownId（言語に依存しない固定ID）で検出。失敗時は名称検索にフォールバック。
+  var PROBE_IDS = ['RemoteProbe1TemperatureId', 'RemoteProbe2TemperatureId', 'RemoteProbe3TemperatureId', 'RemoteProbe4TemperatureId'];
+  function detectProbes() {
+    return multi(PROBE_IDS.map(function (id) { return ['Get', { typeName: 'Diagnostic', search: { id: id } }]; }))
+      .then(function (results) {
+        var out = [];
+        results.forEach(function (list, i) { if (list && list.length) out.push({ id: PROBE_IDS[i], name: list[0].name || PROBE_IDS[i] }); });
+        return out;
+      })
+      .catch(function () {
+        return findDiagnostics('プローブ').then(function (list) { return list.filter(function (d) { return isProbeTemp(d.name); }); });
+      });
+  }
+
   function loadLive(hours) {
     var ready = settings.diagnostics.length ? Promise.resolve() :
-      findDiagnostics().then(function (list) {
-        // 初回: Remote probe 1〜4 temperature を自動選択
-        settings.diagnostics = list.filter(function (d) { return isProbeTemp(d.name); });
-        if (settings.diagnostics.length) saveSettings();
+      detectProbes().then(function (list) {
+        // 初回: リモートプローブ1〜4温度（KnownId: RemoteProbeNTemperatureId）を自動選択
+        settings.diagnostics = list;
+        if (list.length) saveSettings();
       });
     return ready.then(function () {
       if (!settings.diagnostics.length) { var e = new Error('温度センサーの診断項目が自動検出できませんでした。「設定」から対象の診断項目を検索して選んでください。'); e.info = true; throw e; }
@@ -232,7 +246,11 @@ geotab.addin.didcomTemp = function () {
     $('dt-refresh').disabled = true;
     var hours = +$('dt-hours').value;
     (demo ? loadDemo(hours) : loadLive(hours)).then(function (d) {
-      data = d; showMsg(demo ? 'MyGeotab外で開いているため、デモデータを表示しています。' : '', true); render();
+      data = d;
+      showMsg(demo ? 'MyGeotab外で開いているため、デモデータを表示しています。'
+        : !d.vehicles.length ? '監視対象：' + d.diagnostics.map(function (x) { return x.name; }).join('、') + '。期間内にデータがある車両はまだありません（センサーの有効化・MAC登録後に表示されます）。'
+        : '', true);
+      render();
     }).catch(function (e) {
       if (e && e.info) showMsg(e.message, true);
       else showMsg('データ取得に失敗しました：' + (e && e.message ? e.message : e));
