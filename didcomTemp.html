@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>温度モニター</title>
-  <link rel="stylesheet" href="didcomTemp.css?v=0.8.2">
+  <link rel="stylesheet" href="didcomTemp.css?v=0.8.4">
 </head>
 <body>
 <div id="didcomTemp">
@@ -36,7 +36,7 @@
     <div class="dt-kpi ok"><span>正常</span><strong id="kpi-ok">-</strong></div>
     <div class="dt-kpi ng"><span>温度逸脱中</span><strong id="kpi-ng">-</strong></div>
     <div class="dt-kpi rise"><span>急上昇</span><strong id="kpi-rise">-</strong></div>
-    <div class="dt-kpi stale"><span>通信途絶</span><strong id="kpi-stale">-</strong></div>
+    <div class="dt-kpi stale"><span>データ未受信</span><strong id="kpi-stale">-</strong></div>
     <div class="dt-kpi"><span>期間内の逸脱件数</span><strong id="kpi-events">-</strong></div>
   </section>
 
@@ -106,7 +106,7 @@
         </div>
         <div class="dt-row">
           <label>逸脱とみなす最短継続 (分) <input type="number" min="0" id="set-minex"></label>
-          <label>通信途絶とみなす無受信 (分) <input type="number" min="1" id="set-stale"></label>
+          <label>「データ未受信」とみなす時間 (分) <input type="number" min="1" id="set-stale"></label>
         </div>
         <p class="dt-muted">ドア開閉などの短時間の上昇を除外するには「最短継続」を設定してください。</p>
         <div class="dt-row">
@@ -144,6 +144,6 @@
     </div>
   </div>
 </div>
-<script src="didcomTemp.js?v=0.8.2"></script>
+<script src="didcomTemp.js?v=0.8.4"></script>
 </body>
 </html>

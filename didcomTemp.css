@@ -51,7 +51,11 @@
 #didcomTemp .dt-kpi.ok { border-left-color: var(--ok); }
 #didcomTemp .dt-kpi.ng { border-left-color: var(--ng); }
 #didcomTemp .dt-kpi.ng strong { color: var(--ng); }
-#didcomTemp .dt-kpi.stale { border-left-color: var(--stale); }
+#didcomTemp .dt-kpi.stale { border-left-color: #64748b; background: #f8fafc; border-color: #e2e8f0; border-left-color: #64748b; }
+#didcomTemp .dt-kpi.stale.active { background: #cbd5e1; border-color: #94a3b8; border-left-color: #64748b; box-shadow: 0 2px 8px rgba(71,85,105,.15); }
+/* 薄めのグレー。読みやすいよう文字は濃いグレー */
+#didcomTemp .dt-kpi.stale.active span, #didcomTemp .dt-kpi.stale.active strong { color: #1e293b; }
+#didcomTemp .dt-kpi.stale.active span { font-weight: 700; }
 
 #didcomTemp .dt-main { display: grid; grid-template-columns: minmax(320px, 2fr) 3fr; gap: 12px; margin-bottom: 12px; }
 #didcomTemp .dt-card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
@@ -69,7 +73,7 @@
 #didcomTemp .dt-status { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; color: #fff; }
 #didcomTemp .dt-status.ok { background: var(--ok); }
 #didcomTemp .dt-status.ng { background: var(--ng); }
-#didcomTemp .dt-status.stale { background: var(--stale); }
+#didcomTemp .dt-status.stale { background: #64748b; }
 #didcomTemp .dt-status.none { background: #9ca3af; }
 #didcomTemp .dt-ongoing { color: var(--ng); font-weight: 700; }
 
