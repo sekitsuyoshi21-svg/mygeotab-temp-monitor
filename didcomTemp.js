@@ -20,7 +20,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.2.1';
+  var VERSION = '0.2.2';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -80,6 +80,27 @@ geotab.addin.didcomTemp = function () {
     });
   }
 
+  // TPM+の接点センサー（診断「Contact sensor 1/2」）を検出。固定IDは推定のため、名称検索でも補完。
+  var DOOR_IDS = ['ContactSensor1Id', 'ContactSensor2Id'];
+  var DOOR_RE = /(contact\s*sensor|コンタクト\s*センサー?|接触\s*センサー?|接点\s*センサー?)\s*#?\s*([12])/i;
+  function isDoorDiag(name) { return DOOR_RE.test(name || '') && !/(error|alarm|fault|battery|障害|エラー|アラーム|切断|電池|バッテリ)/i.test(name || ''); }
+  function detectDoors() {
+    return Promise.all(DOOR_IDS.map(function (id) {
+      return call('Get', { typeName: 'Diagnostic', search: { id: id } })
+        .then(function (l) { return l && l.length ? { id: l[0].id || id, name: l[0].name || id } : null; }, function () { return null; });
+    })).then(function (found) {
+      found = found.filter(Boolean);
+      if (found.length) return found;
+      return multi(['%Contact sensor%', '%コンタクト%', '%接触センサー%', '%接点センサー%'].map(function (n) {
+        return ['Get', { typeName: 'Diagnostic', search: { name: n }, resultsLimit: 200 }];
+      })).then(function (results) {
+        var seen = {}, out = [];
+        results.forEach(function (l) { l.forEach(function (d) { if (!seen[d.id] && isDoorDiag(d.name)) { seen[d.id] = 1; out.push({ id: d.id, name: d.name }); } }); });
+        return out;
+      }, function () { return []; });
+    });
+  }
+
   function loadLive(hours) {
     var ready = settings.diagnostics.length ? Promise.resolve() :
       detectProbes().then(function (list) {
@@ -87,6 +108,12 @@ geotab.addin.didcomTemp = function () {
         settings.diagnostics = list;
         if (list.length) saveSettings();
       });
+    // ドアセンサーは未設定かつ一度も自動設定していない場合のみ自動検出（利用者が外した選択は尊重）
+    if (!(settings.doorDiagnostics || []).length && !settings.doorAutoDone) {
+      ready = ready.then(detectDoors).then(function (list) {
+        if (list.length) { settings.doorDiagnostics = list; settings.doorAutoDone = true; saveSettings(); }
+      });
+    }
     return ready.then(function () {
       if (!settings.diagnostics.length) { var e = new Error('温度センサーの診断項目が自動検出できませんでした（' + detectInfo + '）。「設定」から対象の診断項目を検索して選んでください。'); e.info = true; throw e; }
       var now = new Date(), from = new Date(now - hours * 3600e3);
@@ -346,12 +373,12 @@ geotab.addin.didcomTemp = function () {
   // ---------- 設定画面 ----------
   // 診断項目の検索・選択リスト（温度センサー用とドアセンサー用で共用）
   function Picker(prefix, defaultQuery) { this.p = prefix; this.q = defaultQuery; this.draft = []; }
-  Picker.prototype.render = function (list) {
+  Picker.prototype.render = function (list, fromSearch) {
     var chosen = {}; this.draft.forEach(function (d) { chosen[d.id] = 1; });
     $(this.p + '-list').innerHTML = list.map(function (d) {
       return '<label><input type="checkbox" data-id="' + esc(d.id) + '" data-name="' + esc(d.name) + '"' + (chosen[d.id] ? ' checked' : '') + '> ' +
         esc(d.name) + ' <code>' + esc(d.id) + '</code></label>';
-    }).join('') || '<p class="dt-muted" style="padding:8px">' + (this.draft.length ? '該当なし' : '未選択（検索して選んでください）') + '</p>';
+    }).join('') || '<p class="dt-muted" style="padding:8px">' + (fromSearch ? '該当なし（別のキーワードで検索してください）' : '未選択（検索して選んでください）') + '</p>';
   };
   // 表示中のチェック状態を反映した選択結果（表示されていない選択済み項目は保持）
   Picker.prototype.collect = function () {
@@ -366,11 +393,11 @@ geotab.addin.didcomTemp = function () {
     self.draft = self.collect();
     if (demo) { self.render(self.draft); return; }
     $(self.p + '-list').innerHTML = '<p class="dt-muted" style="padding:8px">検索中…</p>';
-    findDiagnostics($(self.p + '-query').value.trim() || self.q).then(function (l) { self.render(l); }).catch(function (e) {
+    findDiagnostics($(self.p + '-query').value.trim() || self.q).then(function (l) { self.render(l, true); }).catch(function (e) {
       $(self.p + '-list').innerHTML = '<p class="dt-muted" style="padding:8px">検索に失敗しました：' + esc(e && e.message || e) + '</p>';
     });
   };
-  var tempPicker = new Picker('set-diag', ''), doorPicker = new Picker('set-door', 'ドア');
+  var tempPicker = new Picker('set-diag', ''), doorPicker = new Picker('set-door', 'Contact sensor');
 
   function openSettings() {
     $('set-profile').value = settings.profile; $('set-min').value = settings.min; $('set-max').value = settings.max;
@@ -391,6 +418,7 @@ geotab.addin.didcomTemp = function () {
     if (!demo) {
       settings.diagnostics = tempPicker.collect();
       settings.doorDiagnostics = doorPicker.collect();
+      settings.doorAutoDone = true;
     }
     saveSettings(); $('dt-settings').hidden = true; refresh();
   }
