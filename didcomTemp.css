@@ -1,0 +1,86 @@
+/* MyGeotab本体のスタイルと干渉しないよう、すべて #didcomTemp 配下に限定 */
+#didcomTemp {
+  --bg: #f5f7fa; --card: #fff; --text: #1f2937; --muted: #6b7280; --line: #e5e7eb;
+  --accent: #0b5cad; --ok: #15803d; --ng: #dc2626; --stale: #b45309; --band: rgba(21,128,61,.08);
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  color: var(--text); background: var(--bg); padding: 16px; box-sizing: border-box; min-height: 100%;
+  font-size: 14px;
+}
+#didcomTemp *, #didcomTemp *::before, #didcomTemp *::after { box-sizing: border-box; }
+#didcomTemp h1 { font-size: 20px; margin: 0; }
+#didcomTemp h2 { font-size: 15px; margin: 0; }
+#didcomTemp .dt-muted { color: var(--muted); font-size: 12px; }
+
+#didcomTemp .dt-header { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+#didcomTemp .dt-title { display: flex; align-items: center; gap: 10px; }
+#didcomTemp .dt-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+#didcomTemp .dt-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #e0e7ff; color: #3730a3; }
+#didcomTemp .dt-badge.demo { background: #fef3c7; color: #92400e; }
+#didcomTemp select, #didcomTemp input[type=number], #didcomTemp input[type=search] {
+  font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text);
+}
+#didcomTemp .dt-btn { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+#didcomTemp .dt-btn-ghost { background: #fff; color: var(--accent); }
+#didcomTemp .dt-btn:disabled { opacity: .5; cursor: default; }
+#didcomTemp .dt-check { display: flex; align-items: center; gap: 4px; }
+
+#didcomTemp .dt-message { padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+#didcomTemp .dt-message.info { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+
+#didcomTemp .dt-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 12px; }
+#didcomTemp .dt-kpi { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; border-left: 4px solid var(--accent); }
+#didcomTemp .dt-kpi span { display: block; color: var(--muted); font-size: 12px; }
+#didcomTemp .dt-kpi strong { font-size: 26px; font-variant-numeric: tabular-nums; }
+#didcomTemp .dt-kpi.ok { border-left-color: var(--ok); }
+#didcomTemp .dt-kpi.ng { border-left-color: var(--ng); }
+#didcomTemp .dt-kpi.ng strong { color: var(--ng); }
+#didcomTemp .dt-kpi.stale { border-left-color: var(--stale); }
+
+#didcomTemp .dt-main { display: grid; grid-template-columns: minmax(320px, 2fr) 3fr; gap: 12px; margin-bottom: 12px; }
+#didcomTemp .dt-card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+#didcomTemp .dt-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+#didcomTemp .dt-table-wrap { max-height: 380px; overflow: auto; }
+#didcomTemp .dt-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#didcomTemp .dt-table th { position: sticky; top: 0; background: #f9fafb; text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); }
+#didcomTemp .dt-table th, #didcomTemp .dt-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+#didcomTemp #dt-vehicles tr { cursor: pointer; }
+#didcomTemp #dt-vehicles tr:hover { background: #f3f4f6; }
+#didcomTemp #dt-vehicles tr.selected { background: #e8f0fb; }
+#didcomTemp .dt-temp { display: block; }
+#didcomTemp .dt-temp.ng { color: var(--ng); font-weight: 700; }
+#didcomTemp .dt-temp small { color: var(--muted); font-weight: 400; margin-right: 4px; }
+#didcomTemp .dt-status { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; color: #fff; }
+#didcomTemp .dt-status.ok { background: var(--ok); }
+#didcomTemp .dt-status.ng { background: var(--ng); }
+#didcomTemp .dt-status.stale { background: var(--stale); }
+#didcomTemp .dt-status.none { background: #9ca3af; }
+#didcomTemp .dt-ongoing { color: var(--ng); font-weight: 700; }
+
+#didcomTemp .dt-chart { width: 100%; min-height: 280px; }
+#didcomTemp .dt-chart svg { width: 100%; height: auto; display: block; }
+#didcomTemp .dt-chart .empty { color: var(--muted); padding: 100px 0; text-align: center; }
+#didcomTemp .dt-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; margin-top: 4px; }
+#didcomTemp .dt-legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; }
+#didcomTemp .dt-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+#didcomTemp .dt-stats div { background: #f9fafb; border-radius: 6px; padding: 6px 10px; }
+#didcomTemp .dt-stats span { display: block; font-size: 11px; color: var(--muted); }
+#didcomTemp .dt-stats strong { font-variant-numeric: tabular-nums; }
+
+#didcomTemp .dt-modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+#didcomTemp .dt-modal[hidden] { display: none; }
+#didcomTemp .dt-modal-body { background: #fff; border-radius: 10px; padding: 18px 20px; width: min(640px, 94vw); max-height: 90vh; overflow: auto; }
+#didcomTemp fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; padding: 10px 12px; }
+#didcomTemp legend { font-weight: 600; padding: 0 4px; }
+#didcomTemp fieldset label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); flex: 1; }
+#didcomTemp .dt-row { display: flex; gap: 10px; margin: 8px 0; align-items: flex-end; }
+#didcomTemp .dt-row input[type=search] { flex: 1; }
+#didcomTemp .dt-diag-list { max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+#didcomTemp .dt-diag-list label { flex-direction: row; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--text); font-size: 13px; }
+#didcomTemp .dt-diag-list code { color: var(--muted); font-size: 11px; }
+#didcomTemp .dt-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 900px) {
+  #didcomTemp .dt-main { grid-template-columns: 1fr; }
+  #didcomTemp .dt-kpis { grid-template-columns: repeat(2, 1fr); }
+  #didcomTemp .dt-stats { grid-template-columns: repeat(2, 1fr); }
+}
