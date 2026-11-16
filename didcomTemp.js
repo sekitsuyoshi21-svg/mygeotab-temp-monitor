@@ -20,7 +20,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.4.1';
+  var VERSION = '0.5.0';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -352,12 +352,14 @@ geotab.addin.didcomTemp = function () {
       svg += '<text x="' + x(tt) + '" y="' + (H - 8) + '" font-size="11" text-anchor="' + (k === 0 ? 'start' : k === ticks ? 'end' : 'middle') + '" fill="#6b7280">' + fmtT(new Date(tt)) + '</text>';
     }
     svg += '<g clip-path="url(#dt-clip)">';
+    var markersShown = false;
     lines.forEach(function (ln) {
       var pts = ln.draw.map(function (p) { return x(+p.t).toFixed(1) + ',' + y(p.v).toFixed(1); }).join(' ');
       svg += '<polyline points="' + pts + '" fill="none" stroke="' + ln.c + '" stroke-width="1.8"' + (estimated ? ' stroke-dasharray="6 4"' : '') + '/>';
-      // 拡大して点がまばらな場合は計測点にマーカーを表示
-      if (zoom && ln.vis.length && ln.vis.length <= PW / 12) {
-        ln.vis.forEach(function (p) { svg += '<circle cx="' + x(+p.t).toFixed(1) + '" cy="' + y(p.v).toFixed(1) + '" r="2.5" fill="' + ln.c + '"/>'; });
+      // 計測点を常に表示（点が密集して線が見えにくくなる場合のみ省略）
+      if (ln.vis.length && ln.vis.length <= PW / 4) {
+        markersShown = true;
+        ln.vis.forEach(function (p) { svg += '<circle class="dt-mpt" cx="' + x(+p.t).toFixed(1) + '" cy="' + y(p.v).toFixed(1) + '" r="2.6" fill="' + ln.c + '"/>'; });
       }
     });
     svg += '</g>';
@@ -375,6 +377,7 @@ geotab.addin.didcomTemp = function () {
     $('dt-legend').innerHTML = lines.map(function (ln) { return '<span><i style="background:' + ln.c + '"></i>' + esc(sensorLabel(ln.d.name)) + '</span>'; }).join('') +
       '<span><i style="background:#dc2626"></i>しきい値</span>' +
       (hasDoor() ? '<span><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア開</span>' : '') +
+      (markersShown ? '<span><i class="dt-dot"></i>計測点</span>' : '') +
       '<span class="dt-muted dt-hint">ドラッグで拡大 / ダブルクリックで全体表示</span>';
 
     // 統計は表示範囲で計算
@@ -481,16 +484,25 @@ geotab.addin.didcomTemp = function () {
     var rect = svgEl.getBoundingClientRect(), scale = c.W / rect.width;
     var px = (ev.clientX - rect.left) * scale;
     if (px < c.L || px > c.W - c.R || ev.clientY < rect.top || ev.clientY > rect.bottom) { hideHover(); return; }
-    var t = c.t0 + (px - c.L) / (c.W - c.L - c.R) * (c.t1 - c.t0);
-    // マウス位置から40px相当（最低30分）以内の計測値だけを表示
+    var tc = c.t0 + (px - c.L) / (c.W - c.L - c.R) * (c.t1 - c.t0);
+    // マウス位置から40px相当（最低30分）以内の計測値だけを対象にする
     var maxGap = Math.max(30 * 60000, (c.t1 - c.t0) * 40 / (c.W - c.L - c.R));
+    // 表示範囲内で一番近い「実際の計測点」に吸着する。無ければ推定表示（範囲内に計測点が無い拡大時など）
+    var best = null;
+    c.lines.forEach(function (ln) {
+      var p = nearest(ln.a, tc);
+      if (p && +p.t >= c.t0 && +p.t <= c.t1 && (!best || Math.abs(p.t - tc) < Math.abs(best.t - tc))) best = p;
+    });
+    var snapped = !!(best && Math.abs(best.t - tc) <= maxGap);
+    var t = snapped ? +best.t : tc;
+    var sx = c.x(t);
     g.style.display = '';
-    var hl = g.querySelector('.dt-hl'); hl.setAttribute('x1', px); hl.setAttribute('x2', px);
+    var hl = g.querySelector('.dt-hl'); hl.setAttribute('x1', sx); hl.setAttribute('x2', sx);
     var circles = g.querySelectorAll('circle'), rows = [];
     c.lines.forEach(function (ln, i) {
       var p = nearest(ln.a, t), cir = circles[i], label = esc(sensorLabel(ln.d.name));
       var sw = '<i style="background:' + ln.c + '"></i>';
-      var near = p && Math.abs(p.t - t) <= 2 * 60000, ip = near ? null : interp(ln.a, t);
+      var ip = snapped ? null : interp(ln.a, t);
       if (ip) {
         // 近くに計測点が無い → 前後の計測値から推定（白抜きの点で表示）
         cir.style.display = ''; cir.setAttribute('cx', c.x(t).toFixed(1)); cir.setAttribute('cy', c.y(ip.v).toFixed(1));
@@ -500,7 +512,7 @@ geotab.addin.didcomTemp = function () {
         return;
       }
       cir.setAttribute('fill', ln.c); cir.setAttribute('stroke', '#fff'); cir.setAttribute('stroke-width', '1.5');
-      if (!p || Math.abs(p.t - t) > maxGap) { cir.style.display = 'none'; rows.push('<div>' + sw + label + '<span class="dt-muted">データなし</span></div>'); return; }
+      if (!snapped || !p || Math.abs(p.t - t) > maxGap) { cir.style.display = 'none'; rows.push('<div>' + sw + label + '<span class="dt-muted">データなし</span></div>'); return; }
       cir.style.display = ''; cir.setAttribute('cx', c.x(+p.t).toFixed(1)); cir.setAttribute('cy', c.y(p.v).toFixed(1));
       var off = Math.abs(p.t - t) > 2 * 60000 ? ' <span class="dt-muted">(' + fmtHM(p.t) + ' 計測)</span>' : '';
       rows.push('<div>' + sw + label + '<b' + (isOut(p.v) ? ' class="ng"' : '') + '>' + fmtV(p.v) + '</b>' + off + '</div>');
@@ -510,10 +522,10 @@ geotab.addin.didcomTemp = function () {
       rows.push('<div><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア<b>' + (iv ? '開' : '閉') + '</b>' +
         (iv ? ' <span class="dt-muted">(' + fmtHM(iv.start) + '〜' + (iv.ongoing ? '開いたまま' : fmtHM(iv.end) + '・' + fmtDur(iv.end - iv.start)) + ')</span>' : '') + '</div>');
     }
-    tip.innerHTML = '<div class="dt-tip-time">' + fmtT(new Date(t)) + '</div>' + rows.join('');
+    tip.innerHTML = '<div class="dt-tip-time">' + fmtT(new Date(t)) + (snapped ? ' <span class="dt-muted">計測</span>' : ' <span class="dt-est-tag">計測点なし</span>') + '</div>' + rows.join('');
     tip.hidden = false;
-    // 吹き出しはカーソルの右側、はみ出す場合は左側に表示
-    var cx = ev.clientX - chart.getBoundingClientRect().left, cw = chart.clientWidth, tw = tip.offsetWidth;
+    // 吹き出しは縦線の右側、はみ出す場合は左側に表示
+    var cx = rect.left + sx / scale - chart.getBoundingClientRect().left, cw = chart.clientWidth, tw = tip.offsetWidth;
     tip.style.left = (cx + 14 + tw > cw ? Math.max(0, cx - 14 - tw) : cx + 14) + 'px';
     tip.style.top = Math.max(0, ev.clientY - chart.getBoundingClientRect().top - tip.offsetHeight / 2) + 'px';
   }
