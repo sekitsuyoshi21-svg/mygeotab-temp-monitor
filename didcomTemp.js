@@ -20,7 +20,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.4.0';
+  var VERSION = '0.4.1';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -307,7 +307,15 @@ geotab.addin.didcomTemp = function () {
       ln.draw = a.slice(Math.max(0, i0 - 1), Math.min(a.length, Math.max(i1, i0 - 1) + 2));
       ln.vis.forEach(function (p) { all.push(p.v); });
     });
-    var scaleVals = all.length ? all : [].concat.apply([], lines.map(function (ln) { return ln.draw.map(function (p) { return p.v; }); }));
+    // 範囲内に計測点が無い場合は、範囲の両端の値を前後の計測値から推定
+    var estimated = !all.length, est = [], estAvgs = [];
+    if (estimated) {
+      lines.forEach(function (ln) {
+        var a0 = interp(ln.a, t0), a1 = interp(ln.a, t1);
+        if (a0 && a1) { est.push(a0.v, a1.v); estAvgs.push((a0.v + a1.v) / 2); }   // 直線区間の平均は両端の平均
+      });
+    }
+    var scaleVals = all.length ? all : est.length ? est : [].concat.apply([], lines.map(function (ln) { return ln.draw.map(function (p) { return p.v; }); }));
     if (!scaleVals.length) scaleVals = [settings.min, settings.max];
 
     // 表示幅に合わせて描画（縮小で文字が小さくならないように）
@@ -346,13 +354,17 @@ geotab.addin.didcomTemp = function () {
     svg += '<g clip-path="url(#dt-clip)">';
     lines.forEach(function (ln) {
       var pts = ln.draw.map(function (p) { return x(+p.t).toFixed(1) + ',' + y(p.v).toFixed(1); }).join(' ');
-      svg += '<polyline points="' + pts + '" fill="none" stroke="' + ln.c + '" stroke-width="1.8"/>';
+      svg += '<polyline points="' + pts + '" fill="none" stroke="' + ln.c + '" stroke-width="1.8"' + (estimated ? ' stroke-dasharray="6 4"' : '') + '/>';
       // 拡大して点がまばらな場合は計測点にマーカーを表示
       if (zoom && ln.vis.length && ln.vis.length <= PW / 12) {
         ln.vis.forEach(function (p) { svg += '<circle cx="' + x(+p.t).toFixed(1) + '" cy="' + y(p.v).toFixed(1) + '" r="2.5" fill="' + ln.c + '"/>'; });
       }
     });
     svg += '</g>';
+    if (estimated) {
+      svg += '<rect x="' + (L + 6) + '" y="' + (T + 6) + '" width="168" height="20" rx="4" fill="#fef3c7" stroke="#f59e0b"/>' +
+        '<text x="' + (L + 14) + '" y="' + (T + 20) + '" font-size="11" fill="#92400e">推定（範囲内に計測点なし）</text>';
+    }
     // ドラッグ選択の範囲（初期は非表示）
     svg += '<rect class="dt-sel" x="0" y="' + T + '" width="0" height="' + PH + '" fill="rgba(37,99,235,.12)" stroke="rgba(37,99,235,.5)" style="display:none;pointer-events:none"/>';
     // ホバー用の縦線と点（初期は非表示）
@@ -370,10 +382,32 @@ geotab.addin.didcomTemp = function () {
     var exMs = data.events.filter(function (e) { return e.devId === v.id; }).reduce(function (a, e) {
       return a + Math.max(0, Math.min(+(e.end || e.lastT), t1) - Math.max(+e.start, t0));
     }, 0);
-    $('dt-stats').innerHTML = [['最低', all.length ? fmtV(Math.min.apply(null, all)) : '-'], ['最高', all.length ? fmtV(Math.max.apply(null, all)) : '-'],
-      ['平均', fmtV(avg)], ['逸脱時間合計', exMs ? fmtDur(exMs) : 'なし']]
+    var tempStats;
+    if (all.length) {
+      tempStats = [['最低', fmtV(Math.min.apply(null, all))], ['最高', fmtV(Math.max.apply(null, all))], ['平均', fmtV(avg)]];
+    } else if (est.length) {
+      var eavg = estAvgs.reduce(function (a, b) { return a + b; }, 0) / estAvgs.length;
+      tempStats = [['最低（推定）', '≈ ' + fmtV(Math.min.apply(null, est)), 1], ['最高（推定）', '≈ ' + fmtV(Math.max.apply(null, est)), 1], ['平均（推定）', '≈ ' + fmtV(eavg), 1]];
+    } else {
+      tempStats = [['最低', '-'], ['最高', '-'], ['平均', '-']];
+    }
+    $('dt-stats').innerHTML = tempStats.concat([['逸脱時間合計', exMs ? fmtDur(exMs) : 'なし']])
       .concat(hasDoor() ? [['ドア開 回数', doorsVis.length + '回'], ['ドア開 合計', doorMs ? fmtDur(doorMs) : 'なし']] : [])
-      .map(function (p) { return '<div><span>' + p[0] + '</span><strong>' + p[1] + '</strong></div>'; }).join('');
+      .map(function (p) { return '<div' + (p[2] ? ' class="dt-est"' : '') + '><span>' + p[0] + '</span><strong>' + p[1] + '</strong></div>'; }).join('') +
+      (estimated && est.length ? '<p class="dt-est-note">※ 表示範囲内に計測点がないため、最低・最高・平均は範囲の前後の計測値を直線で結んで推定した値です。</p>'
+        : estimated ? '<p class="dt-est-note">※ 表示範囲内に計測点がなく、前後の計測値も離れすぎているため推定できません。</p>' : '');
+  }
+
+  // 時刻 t の温度を前後の計測値から直線補間で推定（前後どちらかが無い、または6時間以上空く場合は null）
+  var INTERP_MAX_GAP = 6 * 3600e3;
+  function interp(a, t) {
+    if (!a.length || t < +a[0].t || t > +a[a.length - 1].t) return null;
+    var lo = 0, hi = a.length - 1;
+    while (hi - lo > 1) { var m = (lo + hi) >> 1; if (+a[m].t <= t) lo = m; else hi = m; }
+    var p = a[lo], q = a[hi];
+    if (+q.t - +p.t > INTERP_MAX_GAP) return null;
+    var v = +q.t === +p.t ? p.v : p.v + (q.v - p.v) * (t - p.t) / (q.t - p.t);
+    return { v: v, prev: p, next: q };
   }
 
   function niceStep(raw) {
@@ -456,6 +490,16 @@ geotab.addin.didcomTemp = function () {
     c.lines.forEach(function (ln, i) {
       var p = nearest(ln.a, t), cir = circles[i], label = esc(sensorLabel(ln.d.name));
       var sw = '<i style="background:' + ln.c + '"></i>';
+      var near = p && Math.abs(p.t - t) <= 2 * 60000, ip = near ? null : interp(ln.a, t);
+      if (ip) {
+        // 近くに計測点が無い → 前後の計測値から推定（白抜きの点で表示）
+        cir.style.display = ''; cir.setAttribute('cx', c.x(t).toFixed(1)); cir.setAttribute('cy', c.y(ip.v).toFixed(1));
+        cir.setAttribute('fill', '#fff'); cir.setAttribute('stroke', ln.c); cir.setAttribute('stroke-width', '2');
+        rows.push('<div>' + sw + label + '<b class="dt-est-val' + (isOut(ip.v) ? ' ng' : '') + '">≈ ' + fmtV(ip.v) + '</b><span class="dt-est-tag">推定</span>' +
+          ' <span class="dt-muted">(' + fmtHM(ip.prev.t) + ' / ' + fmtHM(ip.next.t) + ' の計測から)</span></div>');
+        return;
+      }
+      cir.setAttribute('fill', ln.c); cir.setAttribute('stroke', '#fff'); cir.setAttribute('stroke-width', '1.5');
       if (!p || Math.abs(p.t - t) > maxGap) { cir.style.display = 'none'; rows.push('<div>' + sw + label + '<span class="dt-muted">データなし</span></div>'); return; }
       cir.style.display = ''; cir.setAttribute('cx', c.x(+p.t).toFixed(1)); cir.setAttribute('cy', c.y(p.v).toFixed(1));
       var off = Math.abs(p.t - t) > 2 * 60000 ? ' <span class="dt-muted">(' + fmtHM(p.t) + ' 計測)</span>' : '';
