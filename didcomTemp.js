@@ -20,7 +20,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.2.2';
+  var VERSION = '0.3.0';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -302,8 +302,7 @@ geotab.addin.didcomTemp = function () {
       var s0 = Math.max(+iv.start, t0), s1 = Math.min(+iv.end, t1); if (s1 <= s0) return;
       doorMs += iv.end - iv.start;
       var w = Math.max(2, x(s1) - x(s0));
-      svg += '<rect x="' + x(s0).toFixed(1) + '" y="' + T + '" width="' + w.toFixed(1) + '" height="' + (H - T - B) + '" fill="' + DOOR_COLOR + '">' +
-        '<title>ドア開 ' + fmtT(iv.start) + '〜' + (iv.ongoing ? '開いたまま' : fmtT(iv.end)) + '（' + fmtDur(iv.end - iv.start) + '）</title></rect>';
+      svg += '<rect class="dt-door-band" x="' + x(s0).toFixed(1) + '" y="' + T + '" width="' + w.toFixed(1) + '" height="' + (H - T - B) + '" fill="' + DOOR_COLOR + '"/>';
     });
     var stepV = (hi - lo) > 20 ? 5 : 2;
     for (var g = Math.ceil(lo / stepV) * stepV; g <= hi; g += stepV) {
@@ -322,7 +321,11 @@ geotab.addin.didcomTemp = function () {
       var pts = ln.a.map(function (p) { return x(+p.t).toFixed(1) + ',' + y(p.v).toFixed(1); }).join(' ');
       svg += '<polyline points="' + pts + '" fill="none" stroke="' + ln.c + '" stroke-width="1.8"/>';
     });
-    chart.innerHTML = svg + '</svg>';
+    // ホバー用の縦線と点（初期は非表示）
+    svg += '<g class="dt-hover" style="display:none;pointer-events:none"><line class="dt-hl" y1="' + T + '" y2="' + (H - B) + '" stroke="#6b7280" stroke-dasharray="3 3"/>' +
+      lines.map(function (ln) { return '<circle r="4" fill="' + ln.c + '" stroke="#fff" stroke-width="1.5"/>'; }).join('') + '</g>';
+    chart.innerHTML = svg + '</svg><div class="dt-tip" hidden></div>';
+    chartCtx = { W: W, H: H, L: L, R: R, T: T, B: B, t0: t0, t1: t1, x: x, y: y, lines: lines, doors: doors };
     $('dt-legend').innerHTML = lines.map(function (ln) { return '<span><i style="background:' + ln.c + '"></i>' + esc(sensorLabel(ln.d.name)) + '</span>'; }).join('') +
       '<span><i style="background:#dc2626"></i>しきい値</span>' +
       (hasDoor() ? '<span><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア開</span>' : '');
@@ -332,6 +335,52 @@ geotab.addin.didcomTemp = function () {
     $('dt-stats').innerHTML = [['最低', fmtV(Math.min.apply(null, all))], ['最高', fmtV(Math.max.apply(null, all))], ['平均', fmtV(avg)], ['逸脱時間合計', exMs ? fmtDur(exMs) : 'なし']]
       .concat(hasDoor() ? [['ドア開 回数', doors.length + '回'], ['ドア開 合計', doorMs ? fmtDur(doorMs) : 'なし']] : [])
       .map(function (p) { return '<div><span>' + p[0] + '</span><strong>' + p[1] + '</strong></div>'; }).join('');
+  }
+
+  // ---------- グラフのホバー表示 ----------
+  var chartCtx = null;
+  function nearest(a, t) {
+    if (!a.length) return null;
+    var lo = 0, hi = a.length - 1;
+    while (hi - lo > 1) { var m = (lo + hi) >> 1; if (+a[m].t < t) lo = m; else hi = m; }
+    return Math.abs(a[lo].t - t) <= Math.abs(a[hi].t - t) ? a[lo] : a[hi];
+  }
+  function fmtHM(d) { return d.toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }); }
+  function hideHover() {
+    var chart = $('dt-chart'), g = chart.querySelector('.dt-hover'), tip = chart.querySelector('.dt-tip');
+    if (g) g.style.display = 'none'; if (tip) tip.hidden = true;
+  }
+  function onHover(ev) {
+    var c = chartCtx, chart = $('dt-chart'), svgEl = chart.querySelector('svg'), g = chart.querySelector('.dt-hover'), tip = chart.querySelector('.dt-tip');
+    if (!c || !svgEl || !g || !tip) return;
+    var rect = svgEl.getBoundingClientRect(), scale = c.W / rect.width;
+    var px = (ev.clientX - rect.left) * scale;
+    if (px < c.L || px > c.W - c.R || ev.clientY < rect.top || ev.clientY > rect.bottom) { hideHover(); return; }
+    var t = c.t0 + (px - c.L) / (c.W - c.L - c.R) * (c.t1 - c.t0);
+    // マウス位置から40px相当（最低30分）以内の計測値だけを表示
+    var maxGap = Math.max(30 * 60000, (c.t1 - c.t0) * 40 / (c.W - c.L - c.R));
+    g.style.display = '';
+    var hl = g.querySelector('.dt-hl'); hl.setAttribute('x1', px); hl.setAttribute('x2', px);
+    var circles = g.querySelectorAll('circle'), rows = [];
+    c.lines.forEach(function (ln, i) {
+      var p = nearest(ln.a, t), cir = circles[i], label = esc(sensorLabel(ln.d.name));
+      var sw = '<i style="background:' + ln.c + '"></i>';
+      if (!p || Math.abs(p.t - t) > maxGap) { cir.style.display = 'none'; rows.push('<div>' + sw + label + '<span class="dt-muted">データなし</span></div>'); return; }
+      cir.style.display = ''; cir.setAttribute('cx', c.x(+p.t).toFixed(1)); cir.setAttribute('cy', c.y(p.v).toFixed(1));
+      var off = Math.abs(p.t - t) > 2 * 60000 ? ' <span class="dt-muted">(' + fmtHM(p.t) + ' 計測)</span>' : '';
+      rows.push('<div>' + sw + label + '<b' + (isOut(p.v) ? ' class="ng"' : '') + '>' + fmtV(p.v) + '</b>' + off + '</div>');
+    });
+    if (hasDoor()) {
+      var iv = c.doors.filter(function (d) { return t >= +d.start && t <= +d.end; })[0];
+      rows.push('<div><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア<b>' + (iv ? '開' : '閉') + '</b>' +
+        (iv ? ' <span class="dt-muted">(' + fmtHM(iv.start) + '〜' + (iv.ongoing ? '開いたまま' : fmtHM(iv.end) + '・' + fmtDur(iv.end - iv.start)) + ')</span>' : '') + '</div>');
+    }
+    tip.innerHTML = '<div class="dt-tip-time">' + fmtT(new Date(t)) + '</div>' + rows.join('');
+    tip.hidden = false;
+    // 吹き出しはカーソルの右側、はみ出す場合は左側に表示
+    var cx = ev.clientX - chart.getBoundingClientRect().left, cw = chart.clientWidth, tw = tip.offsetWidth;
+    tip.style.left = (cx + 14 + tw > cw ? Math.max(0, cx - 14 - tw) : cx + 14) + 'px';
+    tip.style.top = Math.max(0, ev.clientY - chart.getBoundingClientRect().top - tip.offsetHeight / 2) + 'px';
   }
 
   // ---------- 更新・CSV ----------
@@ -425,6 +474,10 @@ geotab.addin.didcomTemp = function () {
 
   function bind() {
     $('dt-refresh').onclick = refresh;
+    var ch = $('dt-chart');
+    ch.addEventListener('pointermove', onHover);
+    ch.addEventListener('pointerdown', onHover);   // タブレットのタップ
+    ch.addEventListener('pointerleave', hideHover);
     var rz = null;
     window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(function () { if (data) renderDetail(); }, 150); });
     $('dt-hours').onchange = refresh;

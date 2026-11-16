@@ -56,7 +56,14 @@
 #didcomTemp .dt-status.none { background: #9ca3af; }
 #didcomTemp .dt-ongoing { color: var(--ng); font-weight: 700; }
 
-#didcomTemp .dt-chart { width: 100%; min-height: 300px; }
+#didcomTemp .dt-chart { width: 100%; min-height: 300px; position: relative; touch-action: pan-y; cursor: crosshair; }
+#didcomTemp .dt-tip { position: absolute; z-index: 5; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.12); padding: 6px 10px; font-size: 12px; white-space: nowrap; line-height: 1.7; }
+#didcomTemp .dt-tip[hidden] { display: none; }
+#didcomTemp .dt-tip-time { font-weight: 700; border-bottom: 1px solid var(--line); margin-bottom: 2px; }
+#didcomTemp .dt-tip i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+#didcomTemp .dt-tip b { margin-left: 8px; font-variant-numeric: tabular-nums; }
+#didcomTemp .dt-tip b.ng { color: var(--ng); }
 #didcomTemp .dt-chart svg { width: 100%; height: 300px; display: block; }
 #didcomTemp .dt-chart .empty { color: var(--muted); padding: 100px 0; text-align: center; }
 #didcomTemp .dt-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; margin-top: 4px; }
