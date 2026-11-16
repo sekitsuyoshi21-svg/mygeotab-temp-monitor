@@ -20,7 +20,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.2.0';
+  var VERSION = '0.2.1';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -261,7 +261,8 @@ geotab.addin.didcomTemp = function () {
     data.diagnostics.forEach(function (d, i) { var a = s[d.id]; if (a && a.length) { lines.push({ d: d, a: a, c: COLORS[i % COLORS.length] }); a.forEach(function (p) { all.push(p.v); }); } });
     if (!all.length) { chart.innerHTML = '<div class="empty">期間内のデータがありません</div>'; return; }
 
-    var W = 800, H = 280, L = 48, R = 12, T = 12, B = 30;
+    // 表示幅に合わせて描画（縮小で文字が小さくならないように）
+    var W = Math.max(360, Math.round(chart.clientWidth || 800)), H = 300, L = 44, R = 12, T = 12, B = 30;
     var lo = Math.min.apply(null, all.concat(settings.min)) - 2, hi = Math.max.apply(null, all.concat(settings.max)) + 2;
     var t0 = +data.from, t1 = +data.to;
     var x = function (t) { return L + (t - t0) / (t1 - t0) * (W - L - R); };
@@ -285,8 +286,9 @@ geotab.addin.didcomTemp = function () {
     [settings.min, settings.max].forEach(function (th) {
       svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(th) + '" y2="' + y(th) + '" stroke="#dc2626" stroke-dasharray="4 3"/>';
     });
-    for (var k = 0; k <= 6; k++) {
-      var tt = t0 + (t1 - t0) * k / 6;
+    var ticks = Math.max(2, Math.min(6, Math.floor((W - L - R) / 110)));
+    for (var k = 0; k <= ticks; k++) {
+      var tt = t0 + (t1 - t0) * k / ticks;
       svg += '<text x="' + x(tt) + '" y="' + (H - 8) + '" font-size="11" text-anchor="middle" fill="#6b7280">' + fmtT(new Date(tt)) + '</text>';
     }
     lines.forEach(function (ln) {
@@ -395,6 +397,8 @@ geotab.addin.didcomTemp = function () {
 
   function bind() {
     $('dt-refresh').onclick = refresh;
+    var rz = null;
+    window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(function () { if (data) renderDetail(); }, 150); });
     $('dt-hours').onchange = refresh;
     $('dt-auto').onchange = schedule;
     $('dt-filter').oninput = function () { if (data) render(); };
