@@ -77,6 +77,8 @@
 #didcomTemp .dt-btn-pdf:hover { background: #b91c1c; }
 #didcomTemp .dt-btn-save:disabled { opacity: .6; }
 #didcomTemp .dt-legend .dt-hint { margin-left: auto; }
+#didcomTemp .dt-legend i.dt-th-swatch { width: 16px; height: 0; background: none; border-top: 2px dashed #dc2626; }
+#didcomTemp .dt-legend i.dt-out-swatch { height: 4px; border-radius: 2px; }
 #didcomTemp .dt-legend i.dt-dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7280; }
 #didcomTemp .dt-tip { position: absolute; z-index: 5; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0,0,0,.12); padding: 6px 10px; font-size: 12px; white-space: nowrap; line-height: 1.7; }

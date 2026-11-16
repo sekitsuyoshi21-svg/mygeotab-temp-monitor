@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.7.1';
+  var VERSION = '0.8.0';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -354,8 +354,14 @@ geotab.addin.didcomTemp = function () {
     var y = function (val) { return T + (hi - val) / (hi - lo) * (H - T - B); };
     var PW = W - L - R, PH = H - T - B;
     var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="温度推移グラフ">' +
-      '<defs><clipPath id="dt-clip"><rect x="' + L + '" y="' + T + '" width="' + PW + '" height="' + PH + '"/></clipPath></defs>';
+      '<defs><clipPath id="dt-clip"><rect x="' + L + '" y="' + T + '" width="' + PW + '" height="' + PH + '"/></clipPath>';
+    // しきい値の外側（上限より上・下限より下）の領域。線をここで切り抜いて赤く重ねる
+    var yTop = Math.max(T, Math.min(H - B, y(settings.max))), yBot = Math.max(T, Math.min(H - B, y(settings.min)));
+    var outRects = (yTop > T ? '<rect x="' + L + '" y="' + T + '" width="' + PW + '" height="' + (yTop - T).toFixed(1) + '"/>' : '') +
+      (yBot < H - B ? '<rect x="' + L + '" y="' + yBot.toFixed(1) + '" width="' + PW + '" height="' + (H - B - yBot).toFixed(1) + '"/>' : '');
+    svg += '<clipPath id="dt-clip-out">' + (outRects || '<rect x="0" y="0" width="0" height="0"/>') + '</clipPath></defs>';
     svg += '<g clip-path="url(#dt-clip)"><rect x="' + L + '" y="' + y(settings.max) + '" width="' + PW + '" height="' + (y(settings.min) - y(settings.max)) + '" fill="rgba(21,128,61,.08)"/></g>';
+    svg += '<g fill="rgba(220,38,38,.07)">' + outRects + '</g>';   // 範囲外の領域を薄い赤で塗る
     // ドア開の区間を背景に帯で表示（表示範囲と重なる部分だけ集計）
     var doors = hasDoor() ? doorIntervals(v.id) : [], doorsVis = [], doorMs = 0;
     doors.forEach(function (iv) {
@@ -379,7 +385,7 @@ geotab.addin.didcomTemp = function () {
       svg += '<text x="' + x(tt) + '" y="' + (H - 8) + '" font-size="11" text-anchor="' + (k === 0 ? 'start' : k === ticks ? 'end' : 'middle') + '" fill="#6b7280">' + fmtT(new Date(tt)) + '</text>';
     }
     svg += '<g clip-path="url(#dt-clip)">';
-    var markersShown = false, riseShown = false;
+    var markersShown = false, riseShown = false, outShown = false;
     lines.forEach(function (ln) {
       var pts = ln.draw.map(function (p) { return x(+p.t).toFixed(1) + ',' + y(p.v).toFixed(1); }).join(' ');
       // 急上昇の区間をオレンジの太い帯で強調（線の下に描く）
@@ -389,11 +395,17 @@ geotab.addin.didcomTemp = function () {
         svg += '<line x1="' + x(+q.t).toFixed(1) + '" y1="' + y(q.v).toFixed(1) + '" x2="' + x(+p.t).toFixed(1) + '" y2="' + y(p.v).toFixed(1) +
           '" stroke="' + RISE_COLOR + '" stroke-width="8" stroke-linecap="round"/>';
       });
-      svg += '<polyline points="' + pts + '" fill="none" stroke="' + ln.c + '" stroke-width="1.8"' + (estimated ? ' stroke-dasharray="6 4"' : '') + '/>';
+      var dash = estimated ? ' stroke-dasharray="6 4"' : '';
+      svg += '<polyline points="' + pts + '" fill="none" stroke="' + ln.c + '" stroke-width="1.8"' + dash + '/>';
+      // しきい値の外に出た部分だけ赤で重ね描き（またいだ位置で正確に切り替わる）
+      if (ln.draw.some(function (p) { return isOut(p.v); })) {
+        outShown = true;
+        svg += '<polyline class="dt-out-line" points="' + pts + '" fill="none" stroke="#dc2626" stroke-width="2.6" stroke-linejoin="round" clip-path="url(#dt-clip-out)"' + dash + '/>';
+      }
       // 計測点を常に表示（点が密集して線が見えにくくなる場合のみ省略）
       if (ln.vis.length && ln.vis.length <= PW / 4) {
         markersShown = true;
-        ln.vis.forEach(function (p) { svg += '<circle class="dt-mpt" cx="' + x(+p.t).toFixed(1) + '" cy="' + y(p.v).toFixed(1) + '" r="2.6" fill="' + ln.c + '"/>'; });
+        ln.vis.forEach(function (p) { svg += '<circle class="dt-mpt" cx="' + x(+p.t).toFixed(1) + '" cy="' + y(p.v).toFixed(1) + '" r="2.6" fill="' + (isOut(p.v) ? '#dc2626' : ln.c) + '"/>'; });
       }
     });
     svg += '</g>';
@@ -409,7 +421,8 @@ geotab.addin.didcomTemp = function () {
     chart.innerHTML = svg + '</svg><div class="dt-tip" hidden></div>';
     chartCtx = { W: W, H: H, L: L, R: R, T: T, B: B, t0: t0, t1: t1, x: x, y: y, lines: lines, doors: doors };
     $('dt-legend').innerHTML = lines.map(function (ln) { return '<span><i style="background:' + ln.c + '"></i>' + esc(sensorLabel(ln.d.name)) + '</span>'; }).join('') +
-      '<span><i style="background:#dc2626"></i>しきい値</span>' +
+      '<span><i class="dt-th-swatch"></i>しきい値</span>' +
+      (outShown ? '<span><i class="dt-out-swatch" style="background:#dc2626"></i>範囲外（危険）</span>' : '') +
       (hasDoor() ? '<span><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア開</span>' : '') +
       (markersShown ? '<span><i class="dt-dot"></i>計測点</span>' : '') +
       (riseShown ? '<span><i class="dt-rise-swatch" style="background:' + RISE_COLOR + '"></i>急上昇（+' + settings.riseRate + '℃/時以上）</span>' : '') +
@@ -628,7 +641,11 @@ geotab.addin.didcomTemp = function () {
       out = new XMLSerializer().serializeToString(c);
     }
     var legend = Array.prototype.filter.call($('dt-legend').querySelectorAll('span'), function (s) { return !s.classList.contains('dt-hint'); })
-      .map(function (s) { var i = s.querySelector('i'); return { color: i ? getComputedStyle(i).backgroundColor : '#999', dot: !!(i && i.classList.contains('dt-dot')), text: s.textContent.trim() }; });
+      .map(function (s) {
+        var i = s.querySelector('i');
+        return { color: i ? getComputedStyle(i).backgroundColor : '#999', dot: !!(i && i.classList.contains('dt-dot')),
+          dashed: !!(i && i.classList.contains('dt-th-swatch')), text: s.textContent.trim() };
+      });
     var stats = Array.prototype.map.call($('dt-stats').querySelectorAll(':scope > div'), function (d) {
       return { label: d.querySelector('span').textContent, value: d.querySelector('strong').textContent.replace(/\s+/g, ' ').trim(), est: d.classList.contains('dt-est'), rise: d.classList.contains('dt-rise') };
     });
@@ -675,7 +692,12 @@ geotab.addin.didcomTemp = function () {
       var lx = PAD;
       info.legend.forEach(function (l) {
         g.fillStyle = l.color;
-        if (l.dot) { g.beginPath(); g.arc(lx + 4, y + 9, 3.5, 0, Math.PI * 2); g.fill(); lx += 12; } else { g.fillRect(lx, y + 6, 16, 6); lx += 22; }
+        if (l.dot) { g.beginPath(); g.arc(lx + 4, y + 9, 3.5, 0, Math.PI * 2); g.fill(); lx += 12; }
+        else if (l.dashed) {
+          g.strokeStyle = '#dc2626'; g.lineWidth = 2; g.setLineDash([4, 3]);
+          g.beginPath(); g.moveTo(lx, y + 9); g.lineTo(lx + 16, y + 9); g.stroke(); g.setLineDash([]); g.lineWidth = 1; lx += 22;
+        }
+        else { g.fillRect(lx, y + 6, 16, 6); lx += 22; }
         text(l.text, lx, y + 14, 12, '#374151'); lx += g.measureText(l.text).width + 18;
       });
       y += 30;
