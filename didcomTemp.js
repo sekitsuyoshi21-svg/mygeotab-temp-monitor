@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.8.5';
+  var VERSION = '0.8.6';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -352,7 +352,7 @@ geotab.addin.didcomTemp = function () {
     if (!scaleVals.length) scaleVals = [settings.min, settings.max];
 
     // 表示幅に合わせて描画（縮小で文字が小さくならないように）
-    var W = forceW || Math.max(360, Math.round(chart.clientWidth || 800)), H = 300, L = 44, R = 12, T = 12, B = 30;
+    var W = forceW || Math.max(360, Math.round(chart.clientWidth || 800)), H = 300, L = 44, R = 12, T = 12, B = 44;
     var dmin = Math.min.apply(null, scaleVals), dmax = Math.max.apply(null, scaleVals), lo, hi;
     if (zoom) { var pad = Math.max(0.5, (dmax - dmin) * 0.1); lo = dmin - pad; hi = dmax + pad; }   // 拡大中はデータに合わせる
     else { lo = Math.min(dmin, settings.min) - 2; hi = Math.max(dmax, settings.max) + 2; }          // 全体表示はしきい値も含める
@@ -385,10 +385,25 @@ geotab.addin.didcomTemp = function () {
       if (th < lo || th > hi) return;
       svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(th) + '" y2="' + y(th) + '" stroke="#dc2626" stroke-dasharray="4 3"/>';
     });
-    var ticks = Math.max(2, Math.min(6, Math.floor(PW / 110)));
-    for (var k = 0; k <= ticks; k++) {
-      var tt = t0 + (t1 - t0) * k / ticks;
-      svg += '<text x="' + x(tt) + '" y="' + (H - 8) + '" font-size="11" text-anchor="' + (k === 0 ? 'start' : k === ticks ? 'end' : 'middle') + '" fill="#6b7280">' + fmtT(new Date(tt)) + '</text>';
+    // 時間軸：日本時間のきりのよい時刻に目盛り（間隔は表示範囲から自動選択）。日付は変わり目だけ2段目に表示
+    var JST = 9 * 3600e3, MIN = 60000, HR = 3600e3;
+    var STEPS = [5 * MIN, 10 * MIN, 15 * MIN, 30 * MIN, HR, 2 * HR, 3 * HR, 4 * HR, 6 * HR, 12 * HR, 24 * HR, 48 * HR];
+    var maxTicks = Math.max(2, Math.floor(PW / 80)), step = STEPS[STEPS.length - 1];
+    for (var si = 0; si < STEPS.length; si++) { if ((t1 - t0) / STEPS[si] <= maxTicks) { step = STEPS[si]; break; } }
+    var axisY = H - B;
+    svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + axisY + '" y2="' + axisY + '" stroke="#9ca3af"/>';
+    var prevDay = null;
+    for (var tt = Math.ceil((t0 + JST) / step) * step - JST; tt <= t1; tt += step) {
+      var tx = x(tt); if (tx < L + 14 || tx > W - R - 14) continue;   // 端で文字が切れないよう省略
+      var jd = new Date(tt + JST).toISOString();                       // 日本時間の YYYY-MM-DDTHH:MM
+      var day = jd.slice(5, 10).replace('-', '/'), hm = jd.slice(11, 16);
+      svg += '<line x1="' + tx.toFixed(1) + '" x2="' + tx.toFixed(1) + '" y1="' + T + '" y2="' + axisY + '" stroke="#eef0f3"/>' +
+        '<line x1="' + tx.toFixed(1) + '" x2="' + tx.toFixed(1) + '" y1="' + axisY + '" y2="' + (axisY + 5) + '" stroke="#9ca3af"/>' +
+        '<text x="' + tx.toFixed(1) + '" y="' + (axisY + 18) + '" font-size="12" font-weight="600" text-anchor="middle" fill="#374151">' + hm + '</text>';
+      if (day !== prevDay) {
+        svg += '<text x="' + tx.toFixed(1) + '" y="' + (axisY + 33) + '" font-size="11" text-anchor="middle" fill="#6b7280">' + day + '</text>';
+        prevDay = day;
+      }
     }
     svg += '<g clip-path="url(#dt-clip)">';
     var markersShown = false, riseShown = false, outShown = false;
@@ -432,7 +447,11 @@ geotab.addin.didcomTemp = function () {
       (hasDoor() ? '<span><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア開</span>' : '') +
       (markersShown ? '<span><i class="dt-dot"></i>計測点</span>' : '') +
       (riseShown ? '<span><i class="dt-rise-swatch" style="background:' + RISE_COLOR + '"></i>急上昇（+' + settings.riseRate + '℃/時以上）</span>' : '') +
-      '<span class="dt-muted dt-hint">ドラッグで拡大 / ダブルクリックで全体表示</span>';
+      '<span class="dt-hint">' +
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5M11 8v6M8 11h6"/></svg><em>ドラッグで拡大</em>' +
+        '<b class="dt-hint-sep"></b>' +
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><em>ダブルクリックで全体表示</em>' +
+      '</span>';
 
     // 統計は表示範囲で計算
     var avg = all.length ? all.reduce(function (a, b) { return a + b; }, 0) / all.length : null;

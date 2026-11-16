@@ -89,7 +89,11 @@
 #didcomTemp .dt-btn-pdf { background: #dc2626; border-color: #dc2626; }
 #didcomTemp .dt-btn-pdf:hover { background: #b91c1c; }
 #didcomTemp .dt-btn-save:disabled { opacity: .6; }
-#didcomTemp .dt-legend .dt-hint { margin-left: auto; }
+#didcomTemp .dt-legend .dt-hint { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;
+  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; color: #1e40af; font-size: 12px; font-weight: 600; }
+#didcomTemp .dt-legend .dt-hint em { font-style: normal; }
+#didcomTemp .dt-legend .dt-hint svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#didcomTemp .dt-legend .dt-hint-sep { width: 1px; height: 12px; background: #93c5fd; margin: 0 4px; }
 #didcomTemp .dt-legend i.dt-th-swatch { width: 16px; height: 0; background: none; border-top: 2px dashed #dc2626; }
 #didcomTemp .dt-legend i.dt-out-swatch { height: 4px; border-radius: 2px; }
 #didcomTemp .dt-legend i.dt-dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7280; }
