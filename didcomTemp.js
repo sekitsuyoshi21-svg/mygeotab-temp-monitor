@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.9.1';
+  var VERSION = '0.9.2';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -560,7 +560,6 @@ geotab.addin.didcomTemp = function () {
 
   // ---------- 測定場所（GPS位置と住所） ----------
   var addrCache = {}, addrPending = {}, logsLoading = {}, lastHoverEv = null;
-  var PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
 
   // 選択中の車両の位置記録（LogRecord）を期間分まとめて1回だけ読み込む
   function ensureLogs(devId) {
@@ -610,6 +609,8 @@ geotab.addin.didcomTemp = function () {
   function shortFromResult(a) {
     if (!a) return '';
     var region = a.region || a.state || '', city = a.city || '';
+    // 住所全文に都道府県があればそこから切り出す（city 項目は政令市の区だけのことがあるため）
+    if (a.formattedAddress && PREF_RE.test(a.formattedAddress.replace(/\s+/g, ''))) return shortAddr(a.formattedAddress);
     if (region && city && PREF_RE.test(region)) return shortAddr(region + city);
     return shortAddr(a.formattedAddress || [region, city, a.street].filter(Boolean).join(' '));
   }
@@ -639,7 +640,7 @@ geotab.addin.didcomTemp = function () {
         ' <span class="dt-muted">（' + (pos.spd > 3 ? '走行中 ' + Math.round(pos.spd) + 'km/h' : '停車中') + '）</span>' +
         (Math.abs(pos.t - t) > 30 * 60000 ? ' <span class="dt-muted">' + fmtT(new Date(pos.t)) + ' 時点の位置</span>' : '');
     }
-    return '<div class="dt-tip-place">' + PIN_SVG + '<span class="dt-tip-place-label">場所</span><span>' + body + '</span></div>';
+    return '<div class="dt-tip-place"><span class="dt-tip-place-label">場所</span>' + body + '</div>';
   }
 
   // デモ用の位置記録（車両名の地名を中心に、日中は走行・夜間は停車）
