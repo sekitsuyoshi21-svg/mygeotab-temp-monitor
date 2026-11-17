@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>庫内温度</title>
+  <link rel="stylesheet" href="didcomDrive.css?v=0.1.0">
+</head>
+<body>
+<div id="didcomDrive">
+  <header class="dd-head">
+    <div>
+      <div class="dd-vehicle" id="dd-vehicle">-</div>
+      <div class="dd-sub"><span id="dd-profile-label">-</span><span id="dd-badge" class="dd-badge">-</span></div>
+    </div>
+    <button id="dd-refresh" class="dd-btn" aria-label="更新">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+    </button>
+  </header>
+
+  <div id="dd-message" class="dd-message" hidden></div>
+
+  <section id="dd-status" class="dd-status none">
+    <div class="dd-status-text" id="dd-status-text">読み込み中…</div>
+    <div class="dd-status-note" id="dd-status-note"></div>
+  </section>
+
+  <section id="dd-sensors" class="dd-sensors"></section>
+
+  <section class="dd-row">
+    <div class="dd-tile" id="dd-door"><span class="dd-label">ドア</span><strong>-</strong><small></small></div>
+    <div class="dd-tile" id="dd-last"><span class="dd-label">最終受信</span><strong>-</strong><small></small></div>
+  </section>
+
+  <section class="dd-card" id="dd-chart-card">
+    <div class="dd-card-head"><span>直近6時間</span><span class="dd-legend" id="dd-legend"></span></div>
+    <div id="dd-chart" class="dd-chart"></div>
+  </section>
+
+  <details class="dd-card dd-settings" id="dd-settings">
+    <summary>表示設定</summary>
+    <label>基準温度
+      <select id="dd-profile">
+        <option value="frozen">冷凍 (-25〜-18℃)</option>
+        <option value="chilled">冷蔵 (0〜10℃)</option>
+        <option value="constant">定温 (15〜25℃)</option>
+      </select>
+    </label>
+    <label id="dd-pick-wrap" hidden>車両
+      <select id="dd-pick"></select>
+    </label>
+    <label class="dd-inline"><input type="checkbox" id="dd-invert"> ドアの値を反転する（0 を「開」）</label>
+    <p class="dd-muted">停車中に確認してください。走行中はグラフと設定を隠し、状態だけを表示します。</p>
+  </details>
+</div>
+<script src="didcomDrive.js?v=0.1.0"></script>
+</body>
+</html>
