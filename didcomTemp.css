@@ -105,6 +105,10 @@
 #didcomTemp .dt-tip b { margin-left: 8px; font-variant-numeric: tabular-nums; }
 #didcomTemp .dt-tip b.ng { color: var(--ng); }
 #didcomTemp .dt-tip b.dt-est-val { font-style: italic; }
+#didcomTemp .dt-tip-place { display: flex; align-items: flex-start; gap: 4px; margin-top: 3px; padding-top: 4px; border-top: 1px dashed var(--line);
+  white-space: normal; max-width: 340px; line-height: 1.5; }
+#didcomTemp .dt-tip-place svg { width: 13px; height: 13px; flex: none; margin-top: 2px; fill: none; stroke: #dc2626; stroke-width: 2.2; stroke-linejoin: round; }
+#didcomTemp .dt-tip-place-label { flex: none; color: var(--muted); margin-right: 4px; }
 #didcomTemp .dt-est-tag { display: inline-block; margin-left: 6px; font-size: 10px; padding: 0 6px; border-radius: 8px; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; line-height: 1.6; }
 #didcomTemp .dt-stats div.dt-est { background: #fffbeb; border: 1px dashed #f59e0b; }
 #didcomTemp .dt-stats div.dt-est span { color: #92400e; }

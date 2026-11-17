@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.8.6';
+  var VERSION = '0.9.1';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -316,6 +316,7 @@ geotab.addin.didcomTemp = function () {
     $('dt-range-label').textContent = '基準 ' + settings.min + '〜' + settings.max + '℃';
     var chart = $('dt-chart');
     if (!v) { chart.innerHTML = '<div class="empty">車両を選択してください</div>'; $('dt-legend').innerHTML = ''; $('dt-stats').innerHTML = ''; return; }
+    if (!forceW) ensureLogs(v.id);   // 吹き出しの「場所」用に位置記録を先読み
 
     var s = data.series[v.id] || {}, lines = [];
     data.diagnostics.forEach(function (d, i) { var a = s[d.id]; if (a && a.length) lines.push({ d: d, a: a, c: COLORS[i % COLORS.length] }); });
@@ -552,10 +553,128 @@ geotab.addin.didcomTemp = function () {
   }
   function fmtHM(d) { return d.toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }); }
   function hideHover() {
+    lastHoverEv = null;
     var chart = $('dt-chart'), g = chart.querySelector('.dt-hover'), tip = chart.querySelector('.dt-tip');
     if (g) g.style.display = 'none'; if (tip) tip.hidden = true;
   }
+
+  // ---------- 測定場所（GPS位置と住所） ----------
+  var addrCache = {}, addrPending = {}, logsLoading = {}, lastHoverEv = null;
+  var PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+
+  // 選択中の車両の位置記録（LogRecord）を期間分まとめて1回だけ読み込む
+  function ensureLogs(devId) {
+    if (!data || !devId) return;
+    data.logs = data.logs || {};
+    if (data.logs[devId] || logsLoading[devId]) return;
+    if (demo) { data.logs[devId] = demoLogs(devId); return; }
+    var d = data; logsLoading[devId] = true;
+    call('Get', { typeName: 'LogRecord', search: { deviceSearch: { id: devId }, fromDate: d.from.toISOString(), toDate: d.to.toISOString() }, resultsLimit: 100000 })
+      .then(function (list) {
+        d.logs[devId] = (list || []).filter(function (r) { return r.latitude || r.longitude; })
+          .map(function (r) { return { t: +new Date(r.dateTime), lat: r.latitude, lon: r.longitude, spd: r.speed || 0 }; })
+          .sort(function (a, b) { return a.t - b.t; });
+      }, function () { d.logs[devId] = []; })
+      .then(function () { logsLoading[devId] = false; if (lastHoverEv && d === data) onHover(lastHoverEv); });
+  }
+
+  // 時刻 t の位置：直前の記録（停車中は記録が止まるため）。直後10分以内の記録の方が近ければそちら
+  function positionAt(devId, t) {
+    var a = data && data.logs && data.logs[devId];
+    if (!a) return undefined;                  // 読み込み中
+    var lo = 0, hi = a.length;
+    while (lo < hi) { var m = (lo + hi) >> 1; if (a[m].t <= t) lo = m + 1; else hi = m; }
+    var p = lo > 0 ? a[lo - 1] : null, n = lo < a.length ? a[lo] : null;
+    if (n && n.t - t <= 10 * 60000 && (!p || n.t - t < t - p.t)) return n;
+    return p && t - p.t <= 12 * 3600e3 ? p : null;
+  }
+
+  function cleanAddr(s) { return String(s || '').replace(/,?\s*(Japan|日本)\s*$/i, '').replace(/〒?\s*\d{3}-\d{4}\s*/, '').trim(); }
+  // 住所を「〜県〜市」程度に短縮（政令市は区まで、郡は町村まで）。日本の住所形式でなければそのまま返す
+  var PREF_RE = /(東京都|北海道|京都府|大阪府|[^\s,、]{2,3}県)/;
+  function shortAddr(s) {
+    var orig = cleanAddr(s);
+    s = orig.replace(/\s+/g, '');
+    var pm = PREF_RE.exec(s);
+    if (!pm) {   // 英語表記など：末尾の「市, 県」だけを残す（例：Toyohashi, Aichi）
+      var parts = orig.split(',').map(function (p) { return p.replace(/\d{3}-?\d{4}/, '').trim(); }).filter(Boolean);
+      return parts.slice(-2).join(', ');
+    }
+    var pref = pm[1], rest = s.slice(pm.index + pref.length), m;
+    if ((m = /^(.+?市)(?!市)(.+?区)?/.exec(rest))) return pref + m[1] + (m[2] && m[2].length <= 5 ? m[2] : '');  // 〇〇市（〇〇区）
+    if ((m = /^(.+?郡.+?[町村])/.exec(rest))) return pref + m[1];                                               // 〇〇郡〇〇町
+    if ((m = /^(.+?[区町村])/.exec(rest))) return pref + m[1];                                                  // 東京23区など
+    return pref;
+  }
+  // GetAddresses の結果から短い住所を作る（都道府県・市区町村の項目があれば優先）
+  function shortFromResult(a) {
+    if (!a) return '';
+    var region = a.region || a.state || '', city = a.city || '';
+    if (region && city && PREF_RE.test(region)) return shortAddr(region + city);
+    return shortAddr(a.formattedAddress || [region, city, a.street].filter(Boolean).join(' '));
+  }
+  // 住所（キャッシュ済みなら文字列、取得中なら null）
+  function addressFor(pos) {
+    var key = pos.lat.toFixed(4) + ',' + pos.lon.toFixed(4);
+    if (addrCache[key] !== undefined) return addrCache[key];
+    if (demo) return (addrCache[key] = demoAddress(pos));
+    if (!addrPending[key]) {
+      addrPending[key] = true;
+      call('GetAddresses', { coordinates: [{ x: pos.lon, y: pos.lat }] }).then(function (r) {
+        var a = r && r[0];
+        addrCache[key] = shortFromResult(a);
+      }, function () { addrCache[key] = ''; })
+        .then(function () { delete addrPending[key]; if (lastHoverEv) onHover(lastHoverEv); });
+    }
+    return null;
+  }
+
+  function placeRow(t) {
+    var pos = positionAt(selectedId, t), body;
+    if (pos === undefined) body = '<span class="dt-muted">取得中…</span>';
+    else if (!pos) body = '<span class="dt-muted">位置データなし</span>';
+    else {
+      var ad = addressFor(pos);
+      body = (ad === null ? '<span class="dt-muted">住所を取得中…</span>' : esc(ad || (pos.lat.toFixed(5) + ', ' + pos.lon.toFixed(5)))) +
+        ' <span class="dt-muted">（' + (pos.spd > 3 ? '走行中 ' + Math.round(pos.spd) + 'km/h' : '停車中') + '）</span>' +
+        (Math.abs(pos.t - t) > 30 * 60000 ? ' <span class="dt-muted">' + fmtT(new Date(pos.t)) + ' 時点の位置</span>' : '');
+    }
+    return '<div class="dt-tip-place">' + PIN_SVG + '<span class="dt-tip-place-label">場所</span><span>' + body + '</span></div>';
+  }
+
+  // デモ用の位置記録（車両名の地名を中心に、日中は走行・夜間は停車）
+  var DEMO_CITIES = { '名古屋': [35.170, 136.882, '愛知県名古屋市', ['中区', '中村区', '港区', '熱田区', '北区']],
+    '品川': [35.609, 139.730, '東京都品川区', ['東品川', '大井', '八潮', '南品川', '勝島']],
+    '大阪': [34.693, 135.502, '大阪府大阪市', ['北区', '此花区', '住之江区', '西淀川区', '中央区']],
+    '福岡': [33.590, 130.402, '福岡県福岡市', ['博多区', '東区', '中央区', '南区', '西区']],
+    '札幌': [43.062, 141.354, '北海道札幌市', ['中央区', '白石区', '東区', '北区', '豊平区']] };
+  function demoCity(devId) {
+    var v = data.vehicles.filter(function (x) { return x.id === devId; })[0], key = v ? v.name.slice(0, 2) : '名古屋';
+    return DEMO_CITIES[key] || DEMO_CITIES['名古屋'];
+  }
+  function demoLogs(devId) {
+    var c = demoCity(devId), out = [], seed = devId.length * 31 + devId.charCodeAt(devId.length - 1);
+    for (var t = +data.from; t <= +data.to; t += 10 * 60000) {
+      var h = (new Date(t + 9 * 3600e3).getUTCHours()), driving = h >= 6 && h < 19;
+      if (!driving && out.length && out[out.length - 1].spd === 0) continue;   // 停車中は記録しない
+      var k = (t / 3600e3 + seed) * 0.35;
+      out.push({ t: t, lat: c[0] + Math.sin(k) * 0.05, lon: c[1] + Math.cos(k * 1.3) * 0.06, spd: driving ? 25 + Math.round(Math.abs(Math.sin(k * 3)) * 35) : 0 });
+    }
+    return out;
+  }
+  function demoAddress(pos) {
+    var best = null;
+    Object.keys(DEMO_CITIES).forEach(function (k) {
+      var c = DEMO_CITIES[k], d = Math.abs(c[0] - pos.lat) + Math.abs(c[1] - pos.lon);
+      if (!best || d < best.d) best = { c: c, d: d };
+    });
+    var wards = best.c[3], i = Math.abs(Math.round(pos.lat * 1000 + pos.lon * 1000)) % wards.length;
+    return best.c[2] + wards[i] + '（デモ）';
+  }
+
   function onHover(ev) {
+    lastHoverEv = ev;
+    ensureLogs(selectedId);
     var c = chartCtx, chart = $('dt-chart'), svgEl = chart.querySelector('svg'), g = chart.querySelector('.dt-hover'), tip = chart.querySelector('.dt-tip');
     if (!c || !svgEl || !g || !tip) return;
     var rect = svgEl.getBoundingClientRect(), scale = c.W / rect.width;
@@ -600,6 +719,7 @@ geotab.addin.didcomTemp = function () {
       rows.push('<div><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア<b>' + (iv ? '開' : '閉') + '</b>' +
         (iv ? ' <span class="dt-muted">(' + fmtHM(iv.start) + '〜' + (iv.ongoing ? '開いたまま' : fmtHM(iv.end) + '・' + fmtDur(iv.end - iv.start)) + ')</span>' : '') + '</div>');
     }
+    rows.push(placeRow(t));
     tip.innerHTML = '<div class="dt-tip-time">' + fmtT(new Date(t)) + (snapped ? ' <span class="dt-muted">計測</span>' : ' <span class="dt-est-tag">計測点なし</span>') + '</div>' + rows.join('');
     tip.hidden = false;
     // 吹き出しは縦線の右側、はみ出す場合は左側に表示
