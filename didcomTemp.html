@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>温度モニター</title>
-  <link rel="stylesheet" href="didcomTemp.css?v=0.10.0">
+  <link rel="stylesheet" href="didcomTemp.css?v=0.10.1">
 </head>
 <body>
 <div id="didcomTemp">
@@ -60,6 +60,8 @@
         <span class="dt-head-right">
           <span id="dt-range-label" class="dt-muted"></span>
           <button id="dt-zoom-reset" class="dt-btn dt-btn-ghost dt-btn-sm" hidden>全体表示に戻す</button>
+          <button id="dt-small" class="dt-btn dt-btn-full" title="グラフを低く小さく表示">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M15 20v-5h5"/></svg><span>小さく表示</span></button>
           <button id="dt-full" class="dt-btn dt-btn-full" title="グラフを画面いっぱいに大きく表示（Escで戻る）">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg><span>大きく表示</span></button>
           <button id="dt-save-png" class="dt-btn dt-btn-save dt-btn-png" title="表示中のグラフと統計をPNG画像で保存">
@@ -146,6 +148,6 @@
     </div>
   </div>
 </div>
-<script src="didcomTemp.js?v=0.10.0"></script>
+<script src="didcomTemp.js?v=0.10.1"></script>
 </body>
 </html>

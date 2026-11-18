@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.10.0';
+  var VERSION = '0.10.1';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -354,7 +354,8 @@ geotab.addin.didcomTemp = function () {
 
     // 表示幅に合わせて描画（縮小で文字が小さくならないように）
     // 「大きく表示」中は画面の高さに合わせて縦も大きくする（レポート出力時は常に300）
-    var H = (!forceW && fullView) ? Math.max(300, Math.round(window.innerHeight - fullReserve())) : 300;
+    var H = forceW ? 300 : sizeMode === 'full' ? Math.max(300, Math.round(window.innerHeight - fullReserve()))
+      : sizeMode === 'small' ? 190 : 300;
     var W = forceW || Math.max(360, Math.round(chart.clientWidth || 800)), L = 44, R = 12, T = 12, B = 44;
     var dmin = Math.min.apply(null, scaleVals), dmax = Math.max.apply(null, scaleVals), lo, hi;
     if (zoom) { var pad = Math.max(0.5, (dmax - dmin) * 0.1); lo = dmin - pad; hi = dmax + pad; }   // 拡大中はデータに合わせる
@@ -502,22 +503,29 @@ geotab.addin.didcomTemp = function () {
   // ---------- 拡大表示 ----------
   var zoom = null, drag = null;   // zoom: {devId, t0, t1}
 
-  // ---------- 大きく表示 ----------
-  var fullView = false;
+  // ---------- 表示サイズ（小さく表示 / 標準 / 大きく表示） ----------
+  var sizeMode = 'normal';   // 'small' | 'normal' | 'full'
   // グラフ以外（見出し・凡例・統計）に必要な高さ
   function fullReserve() {
     var card = document.querySelector('#didcomTemp .dt-detail');
     var head = card.querySelector('.dt-card-head'), leg = $('dt-legend'), st = $('dt-stats');
-    return (head ? head.offsetHeight : 40) + (leg ? leg.offsetHeight : 24) + (st ? st.offsetHeight : 70) + 60;
+    return (head ? head.offsetHeight : 40) + (leg ? leg.offsetHeight : 24) + (st ? st.offsetHeight : 70) + 80;
   }
-  function setFull(on) {
-    fullView = !!on;
-    var card = document.querySelector('#didcomTemp .dt-detail'), btn = $('dt-full');
-    card.classList.toggle('dt-full', fullView);
-    btn.querySelector('span').textContent = fullView ? '元に戻す' : '大きく表示';
-    btn.title = fullView ? '通常の表示に戻す（Esc）' : 'グラフを画面いっぱいに大きく表示（Escで戻る）';
+  function setSize(mode) {
+    sizeMode = mode;
+    var card = document.querySelector('#didcomTemp .dt-detail');
+    card.classList.toggle('dt-full', mode === 'full');
+    card.classList.toggle('dt-small', mode === 'small');
+    var bf = $('dt-full'), bs = $('dt-small');
+    bf.querySelector('span').textContent = mode === 'full' ? '元に戻す' : '大きく表示';
+    bf.title = mode === 'full' ? '通常の表示に戻す（Esc）' : 'グラフを画面いっぱいに大きく表示（Escで戻る）';
+    bf.classList.toggle('on', mode === 'full');
+    bs.querySelector('span').textContent = mode === 'small' ? '元に戻す' : '小さく表示';
+    bs.title = mode === 'small' ? '通常の大きさに戻す' : 'グラフを低く小さく表示';
+    bs.classList.toggle('on', mode === 'small');
     hideHover();
     if (data) renderDetail();
+    if (mode === 'full') card.scrollTop = 0;
   }
   function updateZoomUi(t0, t1) {
     var btn = $('dt-zoom-reset'); if (btn) btn.hidden = !zoom;
@@ -1015,8 +1023,9 @@ geotab.addin.didcomTemp = function () {
     ch.addEventListener('pointerleave', function () { if (!drag) hideHover(); });
     ch.addEventListener('dblclick', resetZoom);
     $('dt-zoom-reset').onclick = resetZoom;
-    $('dt-full').onclick = function () { setFull(!fullView); };
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && fullView) setFull(false); });
+    $('dt-full').onclick = function () { setSize(sizeMode === 'full' ? 'normal' : 'full'); };
+    $('dt-small').onclick = function () { setSize(sizeMode === 'small' ? 'normal' : 'small'); };
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && sizeMode === 'full') setSize('normal'); });
     $('dt-save-png').onclick = function () { exportReport('png'); };
     $('dt-save-pdf').onclick = function () { exportReport('pdf'); };
     var rz = null;
