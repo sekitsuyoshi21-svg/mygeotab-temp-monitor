@@ -113,6 +113,14 @@
 #didcomTemp .dt-stats div.dt-est strong { font-style: italic; color: #78350f; }
 #didcomTemp .dt-est-note { grid-column: 1 / -1; margin: 0; font-size: 11px; color: #92400e; }
 #didcomTemp .dt-chart svg { width: 100%; height: 300px; display: block; }
+/* 大きく表示（グラフのカードを画面いっぱいに） */
+#didcomTemp .dt-btn-full { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 13px; font-weight: 700;
+  border-radius: 6px; background: #fff; color: #0b5cad; border: 1.5px solid #0b5cad; }
+#didcomTemp .dt-btn-full:hover { background: #eff6ff; }
+#didcomTemp .dt-btn-full svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#didcomTemp .dt-detail.dt-full { position: fixed; inset: 0; z-index: 10000; margin: 0; border-radius: 0; border: 0; overflow: auto; padding: 14px 20px; }
+#didcomTemp .dt-detail.dt-full .dt-card-head h2 { font-size: 18px; }
+#didcomTemp .dt-detail.dt-full .dt-chart svg { height: auto; }
 #didcomTemp .dt-chart .empty { color: var(--muted); padding: 100px 0; text-align: center; }
 #didcomTemp .dt-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; margin-top: 4px; }
 #didcomTemp .dt-legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; }
