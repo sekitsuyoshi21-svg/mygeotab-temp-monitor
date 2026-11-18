@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.10.1';
+  var VERSION = '0.10.2';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -354,7 +354,7 @@ geotab.addin.didcomTemp = function () {
 
     // 表示幅に合わせて描画（縮小で文字が小さくならないように）
     // 「大きく表示」中は画面の高さに合わせて縦も大きくする（レポート出力時は常に300）
-    var H = forceW ? 300 : sizeMode === 'full' ? Math.max(300, Math.round(window.innerHeight - fullReserve()))
+    var H = forceW ? 300 : sizeMode === 'full' ? Math.max(300, Math.round(visibleHeight() - fullReserve()))
       : sizeMode === 'small' ? 190 : 300;
     var W = forceW || Math.max(360, Math.round(chart.clientWidth || 800)), L = 44, R = 12, T = 12, B = 44;
     var dmin = Math.min.apply(null, scaleVals), dmax = Math.max.apply(null, scaleVals), lo, hi;
@@ -443,7 +443,11 @@ geotab.addin.didcomTemp = function () {
     // ホバー用の縦線と点（初期は非表示）
     svg += '<g class="dt-hover" style="display:none;pointer-events:none"><line class="dt-hl" y1="' + T + '" y2="' + (H - B) + '" stroke="#6b7280" stroke-dasharray="3 3"/>' +
       lines.map(function (ln) { return '<circle r="4" fill="' + ln.c + '" stroke="#fff" stroke-width="1.5"/>'; }).join('') + '</g>';
-    chart.innerHTML = svg + '</svg><div class="dt-tip" hidden></div>';
+    chart.innerHTML = svg + '</svg><div class="dt-tip" hidden></div>' +
+      // 大きく表示中は、見出しが画面外に隠れても操作できるよう、グラフの右上にもボタンを置く
+      (!forceW && sizeMode === 'full' ? '<div class="dt-chart-tools">' +
+        '<button type="button" data-size="small" title="グラフを小さく表示">' + ICON_SHRINK + '小さく表示</button>' +
+        '<button type="button" data-size="normal" title="標準の大きさに戻す（Esc）">' + ICON_SHRINK + '標準に戻す</button></div>' : '');
     chartCtx = { W: W, H: H, L: L, R: R, T: T, B: B, t0: t0, t1: t1, x: x, y: y, lines: lines, doors: doors };
     $('dt-legend').innerHTML = lines.map(function (ln) { return '<span><i style="background:' + ln.c + '"></i>' + esc(sensorLabel(ln.d.name)) + '</span>'; }).join('') +
       '<span><i class="dt-th-swatch"></i>しきい値</span>' +
@@ -505,6 +509,12 @@ geotab.addin.didcomTemp = function () {
 
   // ---------- 表示サイズ（小さく表示 / 標準 / 大きく表示） ----------
   var sizeMode = 'normal';   // 'small' | 'normal' | 'full'
+  var ICON_SHRINK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M15 20v-5h5"/></svg>';
+  // 大きく表示の高さ：MyGeotab内ではAdd-Inの枠が画面より高いことがあるため、モニターの高さでも上限をかける
+  function visibleHeight() {
+    var h = window.innerHeight || 800, sh = (window.screen && window.screen.availHeight) || h;
+    return Math.min(h, sh - 230);
+  }
   // グラフ以外（見出し・凡例・統計）に必要な高さ
   function fullReserve() {
     var card = document.querySelector('#didcomTemp .dt-detail');
@@ -541,6 +551,7 @@ geotab.addin.didcomTemp = function () {
   function clampPx(px) { var c = chartCtx; return Math.max(c.L, Math.min(c.W - c.R, px)); }
   function onDown(ev) {
     if (!chartCtx || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+    if (ev.target.closest && ev.target.closest('.dt-chart-tools')) return;   // グラフ上のボタンはドラッグ扱いしない
     var px = plotPx(ev); if (px == null || px < chartCtx.L || px > chartCtx.W - chartCtx.R) return;
     drag = { x0: px, cx0: ev.clientX, moved: false };
     try { $('dt-chart').setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
@@ -1025,6 +1036,9 @@ geotab.addin.didcomTemp = function () {
     $('dt-zoom-reset').onclick = resetZoom;
     $('dt-full').onclick = function () { setSize(sizeMode === 'full' ? 'normal' : 'full'); };
     $('dt-small').onclick = function () { setSize(sizeMode === 'small' ? 'normal' : 'small'); };
+    ch.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('.dt-chart-tools button'); if (b) { e.stopPropagation(); setSize(b.dataset.size); }
+    });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && sizeMode === 'full') setSize('normal'); });
     $('dt-save-png').onclick = function () { exportReport('png'); };
     $('dt-save-pdf').onclick = function () { exportReport('pdf'); };

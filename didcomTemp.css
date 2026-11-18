@@ -124,6 +124,13 @@
 /* 大きく表示中も見出し（元に戻すボタン）を常に表示 */
 #didcomTemp .dt-detail.dt-full .dt-card-head { position: sticky; top: -14px; z-index: 6; background: var(--card); padding: 6px 0; margin-top: -6px; }
 #didcomTemp .dt-btn-full.on { background: #0b5cad; color: #fff; }
+/* 大きく表示中、グラフ右上の縮小ボタン */
+#didcomTemp .dt-chart-tools { position: absolute; top: 18px; right: 20px; z-index: 4; display: flex; gap: 6px; }
+#didcomTemp .dt-chart-tools button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 700;
+  color: #fff; background: #0b5cad; border: 0; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+#didcomTemp .dt-chart-tools button:hover { background: #094a8c; }
+#didcomTemp .dt-chart-tools button[data-size="normal"] { background: #fff; color: #0b5cad; border: 1.5px solid #0b5cad; }
+#didcomTemp .dt-chart-tools svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 /* 小さく表示 */
 #didcomTemp .dt-detail.dt-small .dt-chart { min-height: 190px; }
 #didcomTemp .dt-detail.dt-small .dt-chart svg { height: 190px; }
