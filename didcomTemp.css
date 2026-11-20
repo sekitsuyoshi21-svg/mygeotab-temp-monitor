@@ -118,7 +118,8 @@
   border-radius: 6px; background: #fff; color: #0b5cad; border: 1.5px solid #0b5cad; }
 #didcomTemp .dt-btn-full:hover { background: #eff6ff; }
 #didcomTemp .dt-btn-full svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-#didcomTemp .dt-detail.dt-full { position: fixed; inset: 0; z-index: 10000; margin: 0; border-radius: 0; border: 0; overflow: auto; padding: 14px 20px; }
+#didcomTemp .dt-detail.dt-full { position: fixed; inset: 0; z-index: 10000; margin: 0; border-radius: 0; border: 0; overflow: auto; padding: 14px 24px;
+  box-shadow: 0 0 0 1px var(--line); }
 #didcomTemp .dt-detail.dt-full .dt-card-head h2 { font-size: 18px; }
 #didcomTemp .dt-detail.dt-full .dt-chart svg { height: auto; }
 /* 大きく表示中も見出し（元に戻すボタン）を常に表示 */
