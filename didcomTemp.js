@@ -16,13 +16,13 @@ geotab.addin.didcomTemp = function () {
     chilled: { min: 0, max: 10 },
     constant: { min: 15, max: 25 }
   };
-  var DEFAULTS = { profile: 'frozen', min: -25, max: -18, minExcursionMin: 5, staleMinutes: 30, diagnostics: [], doorDiagnostics: [], doorInvert: false,
+  var DEFAULTS = { groupId: '', profile: 'frozen', min: -25, max: -18, minExcursionMin: 5, staleMinutes: 30, diagnostics: [], doorDiagnostics: [], doorInvert: false,
     riseRate: 3, riseWindowMin: 60 };   // 急上昇：過去60分の変化が +3℃/時 以上
   var RISE_COLOR = 'rgba(234,88,12,.35)';
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.11.1';
+  var VERSION = '0.12.0';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -125,6 +125,7 @@ geotab.addin.didcomTemp = function () {
       if (!settings.diagnostics.length) { var e = new Error('温度センサーの診断項目が自動検出できませんでした（' + detectInfo + '）。「設定」から対象の診断項目を検索して選んでください。'); e.info = true; throw e; }
       var now = new Date(), from = new Date(now - hours * 3600e3);
       var calls = [['Get', { typeName: 'Device', search: { fromDate: now.toISOString() }, resultsLimit: 5000 }]];
+      var groupsP = call('Get', { typeName: 'Group' }).then(null, function () { return []; });   // グループ（会社・営業所など）。取れなくても動作は続ける
       settings.diagnostics.forEach(function (d) {
         calls.push(['Get', { typeName: 'StatusData', search: { diagnosticSearch: { id: d.id }, fromDate: from.toISOString(), toDate: now.toISOString() }, resultsLimit: 50000 }]);
       });
@@ -146,8 +147,11 @@ geotab.addin.didcomTemp = function () {
         [series, door].forEach(function (obj) {
           Object.keys(obj).forEach(function (dev) { Object.keys(obj[dev]).forEach(function (k) { obj[dev][k].sort(function (a, b) { return a.t - b.t; }); }); });
         });
-        var vehicles = devices.filter(function (dv) { return series[dv.id]; }).map(function (dv) { return { id: dv.id, name: dv.name }; });
-        return { vehicles: vehicles, diagnostics: settings.diagnostics, series: series, door: door, doorDiags: doorDiags, from: from, to: now };
+        var vehicles = devices.filter(function (dv) { return series[dv.id]; })
+          .map(function (dv) { return { id: dv.id, name: dv.name, groups: (dv.groups || []).map(function (g) { return g.id; }) }; });
+        return groupsP.then(function (groups) {
+          return { vehicles: vehicles, groups: groups || [], diagnostics: settings.diagnostics, series: series, door: door, doorDiags: doorDiags, from: from, to: now };
+        });
       });
     });
   }
@@ -160,7 +164,8 @@ geotab.addin.didcomTemp = function () {
     var seed = 7; function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
     var vehicles = [], series = {}, door = {};
     names.forEach(function (n, vi) {
-      var id = 'v' + vi; vehicles.push({ id: id, name: n }); series[id] = {};
+      var id = 'v' + vi, gmap = { '名古屋': 'gNagoya', '品川': 'gTokyo', '大阪': 'gOsaka', '福岡': 'gFukuoka', '札幌': 'gSapporo' };
+      vehicles.push({ id: id, name: n, groups: [gmap[n.slice(0, 2)] || 'gNagoya'] }); series[id] = {};
       diags.forEach(function (d, di) {
         var arr = [], end = vi === 7 ? now - 3 * 3600e3 : now;
         for (var t = from; t <= end; t += step) {
@@ -193,7 +198,14 @@ geotab.addin.didcomTemp = function () {
       dArr.sort(function (a, b) { return a.t - b.t; });
       door[id] = { door1: dArr };
     });
-    return Promise.resolve({ vehicles: vehicles, diagnostics: diags, series: series, door: door, doorDiags: [{ id: 'door1', name: '接点センサー1（ドア）' }], from: new Date(from), to: new Date(now) });
+    // デモ用のグループ（会社 → 運送会社 → 営業所）
+    var groups = [
+      { id: 'GroupCompanyId', name: '', children: [{ id: 'gA' }, { id: 'gB' }] },
+      { id: 'gA', name: 'A冷凍運輸', children: [{ id: 'gNagoya' }, { id: 'gTokyo' }] },
+      { id: 'gB', name: 'B食品物流', children: [{ id: 'gOsaka' }, { id: 'gFukuoka' }, { id: 'gSapporo' }] },
+      { id: 'gNagoya', name: '名古屋営業所', children: [] }, { id: 'gTokyo', name: '東京営業所', children: [] },
+      { id: 'gOsaka', name: '大阪営業所', children: [] }, { id: 'gFukuoka', name: '福岡営業所', children: [] }, { id: 'gSapporo', name: '札幌営業所', children: [] }];
+    return Promise.resolve({ vehicles: vehicles, groups: groups, diagnostics: diags, series: series, door: door, doorDiags: [{ id: 'door1', name: '接点センサー1（ドア）' }], from: new Date(from), to: new Date(now) });
   }
 
   // ---------- 集計 ----------
@@ -265,14 +277,60 @@ geotab.addin.didcomTemp = function () {
   var STATUS_TEXT = { ok: '正常', ng: '逸脱', rise: '急上昇', stale: 'データ未受信', none: 'データなし' };
   var STATUS_ORDER = { ng: 0, rise: 1, stale: 2, ok: 3, none: 4 };
 
+  // ---------- グループ（会社・営業所など）での絞り込み ----------
+  var SYSTEM_GROUP = /^Group\w*Id$/;   // 「会社」など MyGeotab の標準グループは一覧に出さない（中の子グループはたどる）
+  function buildGroups() {
+    var byId = {}, parent = {}, count = {};
+    (data.groups || []).forEach(function (g) { byId[g.id] = g; });
+    (data.groups || []).forEach(function (g) { (g.children || []).forEach(function (c) { parent[c.id] = g.id; }); });
+    data.vehicles.forEach(function (v) {   // 車両が属するグループと、その上位のグループすべて
+      v.allGroups = {};
+      (v.groups || []).forEach(function (gid) { for (var x = gid, n = 0; x && n < 50; x = parent[x], n++) v.allGroups[x] = true; });
+      Object.keys(v.allGroups).forEach(function (gid) { count[gid] = (count[gid] || 0) + 1; });
+    });
+    var opts = [], seen = {};
+    function walk(gid, depth) {
+      var g = byId[gid]; if (!g || seen[gid]) return; seen[gid] = true;
+      var listed = !SYSTEM_GROUP.test(gid) && count[gid];
+      if (listed) opts.push({ id: gid, name: g.name || gid, depth: depth, n: count[gid] });
+      (g.children || []).map(function (c) { return byId[c.id]; }).filter(Boolean)
+        .sort(function (a, b) { return (a.name || '').localeCompare(b.name || '', 'ja'); })
+        .forEach(function (c) { walk(c.id, depth + (listed ? 1 : 0)); });
+    }
+    (data.groups || []).filter(function (g) { return !parent[g.id]; }).forEach(function (g) { walk(g.id, 0); });
+    // 階層がたどれないグループ（権限で親が見えない等）も、車両がいれば最後に並べる
+    Object.keys(count).forEach(function (gid) { if (!seen[gid] && byId[gid] && !SYSTEM_GROUP.test(gid)) opts.push({ id: gid, name: byId[gid].name || gid, depth: 0, n: count[gid] }); });
+    data.groupOpts = opts;
+  }
+  function inGroup(v) { return !settings.groupId || !!(v.allGroups && v.allGroups[settings.groupId]); }
+  function renderGroupSelect() {
+    var sel = $('dt-group'), opts = data.groupOpts || [];
+    if (settings.groupId && !opts.some(function (o) { return o.id === settings.groupId; })) settings.groupId = '';
+    sel.innerHTML = '<option value="">すべてのグループ（' + data.vehicles.length + '台）</option>' + opts.map(function (o) {
+      return '<option value="' + esc(o.id) + '">' + new Array(o.depth + 1).join('　') + esc(o.name) + '（' + o.n + '台）</option>';
+    }).join('');
+    sel.value = settings.groupId || '';
+    $('dt-group-wrap').hidden = !opts.length;
+  }
+  function renderVehicleSelect(rows) {
+    var sel = $('dt-vehicle');
+    var list = rows.slice().sort(function (a, b) { return a.v.name.localeCompare(b.v.name, 'ja'); });
+    sel.innerHTML = list.length ? list.map(function (r) {
+      return '<option value="' + esc(r.v.id) + '">' + esc(r.v.name) + (r.status !== 'ok' ? '（' + STATUS_TEXT[r.status] + '）' : '') + '</option>';
+    }).join('') : '<option value="">（車両なし）</option>';
+    sel.value = selectedId || '';
+  }
+
   // ---------- 描画 ----------
   function render() {
     var filter = ($('dt-filter').value || '').trim();
     Object.keys(data.series).forEach(function (dev) { Object.keys(data.series[dev]).forEach(function (k) { computeRates(data.series[dev][k]); }); });
-    var rows = data.vehicles.map(function (v) { return Object.assign({ v: v }, vehicleState(v)); })
+    buildGroups(); renderGroupSelect();
+    var vis = data.vehicles.filter(inGroup);   // 選んだグループの車両だけで集計・表示
+    var rows = vis.map(function (v) { return Object.assign({ v: v }, vehicleState(v)); })
       .sort(function (a, b) { return STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.v.name.localeCompare(b.v.name); });
     var events = [];
-    data.vehicles.forEach(function (v) {
+    vis.forEach(function (v) {
       var doors = doorIntervals(v.id);
       excursions(v.id).forEach(function (e) {
         var eEnd = e.end || e.lastT;
@@ -293,7 +351,8 @@ geotab.addin.didcomTemp = function () {
     });
     $('kpi-events').textContent = events.length;
 
-    if (!selectedId && rows.length) selectedId = rows[0].v.id;
+    if (!rows.some(function (r) { return r.v.id === selectedId; })) selectedId = rows.length ? rows[0].v.id : null;   // グループ外になったら先頭の車両に
+    renderVehicleSelect(rows);
     $('dt-vehicles').innerHTML = rows.filter(function (r) { return !filter || r.v.name.indexOf(filter) >= 0; }).map(function (r) {
       var temps = r.latest.map(function (l) {
         var rate = r.status !== 'stale' && l.r != null
@@ -317,7 +376,7 @@ geotab.addin.didcomTemp = function () {
 
   function renderDetail(forceW) {
     var v = data.vehicles.filter(function (x) { return x.id === selectedId; })[0];
-    $('dt-detail-title').textContent = v ? '温度推移：' + v.name : '温度推移';
+    var vsel = $('dt-vehicle'); if (vsel && v && vsel.value !== v.id) vsel.value = v.id;
     $('dt-range-label').textContent = '基準 ' + settings.min + '〜' + settings.max + '℃';
     var chart = $('dt-chart');
     if (!v) { chart.innerHTML = '<div class="empty">車両を選択してください</div>'; $('dt-legend').innerHTML = ''; $('dt-stats').innerHTML = ''; return; }
@@ -1161,6 +1220,8 @@ geotab.addin.didcomTemp = function () {
     ch.addEventListener('pointerleave', function () { if (!drag) hideHover(); });
     ch.addEventListener('dblclick', resetZoom);
     $('dt-zoom-reset').onclick = resetZoom;
+    $('dt-group').onchange = function () { settings.groupId = this.value; saveSettings(); hideHover(); if (data) render(); };
+    $('dt-vehicle').onchange = function () { if (!this.value) return; selectedId = this.value; hideHover(); if (data) render(); };
     $('dt-full').onclick = function () { setSize(sizeMode === 'full' ? 'normal' : 'full'); };
     $('dt-small').onclick = function () { setSize(sizeMode === 'small' ? 'normal' : 'small'); };
     ch.addEventListener('click', function (e) {

@@ -143,6 +143,15 @@
 #didcomTemp .dt-period svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 #didcomTemp .dt-period select { font-weight: 700; color: #78350f; border-color: #fcd34d; padding: 3px 6px; }
 #didcomTemp .dt-period select:focus { outline: 2px solid #f59e0b; outline-offset: 1px; }
+/* グループ・車両の選択（青い枠） */
+#didcomTemp .dt-pick { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border: 2px solid #0b5cad; border-radius: 6px;
+  background: #eff6ff; color: #0b3d75; font-size: 13px; font-weight: 700; white-space: nowrap; }
+#didcomTemp .dt-pick[hidden] { display: none; }
+#didcomTemp .dt-pick svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#didcomTemp .dt-pick select { font-weight: 700; color: #0b3d75; border-color: #93c5fd; padding: 3px 6px; max-width: 280px; }
+#didcomTemp .dt-pick-vehicle { font-size: 15px; vertical-align: middle; }
+#didcomTemp .dt-pick-vehicle select { font-size: 15px; }
+#didcomTemp #dt-detail-title { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 /* 小さく表示 */
 #didcomTemp .dt-detail.dt-small .dt-chart { min-height: 190px; }
 #didcomTemp .dt-detail.dt-small .dt-chart svg { height: 190px; }

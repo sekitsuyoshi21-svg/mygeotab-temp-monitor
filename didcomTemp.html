@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>温度モニター</title>
-  <link rel="stylesheet" href="didcomTemp.css?v=0.11.1">
+  <link rel="stylesheet" href="didcomTemp.css?v=0.12.0">
 </head>
 <body>
 <div id="didcomTemp">
@@ -14,6 +14,10 @@
       <span id="dt-source" class="dt-badge">-</span>
     </div>
     <div class="dt-controls">
+      <label id="dt-group-wrap" class="dt-pick" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-6h6v6"/></svg>グループ
+        <select id="dt-group"></select>
+      </label>
       <label class="dt-check"><input type="checkbox" id="dt-auto" checked> 自動更新 (5分)</label>
       <button id="dt-refresh" class="dt-btn">更新</button>
       <button id="dt-open-settings" class="dt-btn dt-btn-ghost">設定</button>
@@ -47,7 +51,9 @@
 
     <div class="dt-card dt-detail">
       <div class="dt-card-head">
-        <h2 id="dt-detail-title">温度推移</h2>
+        <h2 id="dt-detail-title">温度推移：<label class="dt-pick dt-pick-vehicle" title="グラフに表示する車両">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg>
+          <select id="dt-vehicle"></select></label></h2>
         <span class="dt-head-right">
           <span id="dt-range-label" class="dt-muted"></span>
           <button id="dt-zoom-reset" class="dt-btn dt-btn-ghost dt-btn-sm" hidden>全体表示に戻す</button>
@@ -149,6 +155,6 @@
     </div>
   </div>
 </div>
-<script src="didcomTemp.js?v=0.11.1"></script>
+<script src="didcomTemp.js?v=0.12.0"></script>
 </body>
 </html>
