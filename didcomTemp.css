@@ -132,6 +132,12 @@
 #didcomTemp .dt-chart-tools button:hover { background: #094a8c; }
 #didcomTemp .dt-chart-tools button[data-size="normal"] { background: #fff; color: #0b5cad; border: 1.5px solid #0b5cad; }
 #didcomTemp .dt-chart-tools svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+/* 期間の選択（グラフの見出し内、色付きの枠） */
+#didcomTemp .dt-period { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border: 2px solid #f59e0b;
+  border-radius: 6px; background: #fffbeb; color: #92400e; font-size: 13px; font-weight: 700; white-space: nowrap; }
+#didcomTemp .dt-period svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#didcomTemp .dt-period select { font-weight: 700; color: #78350f; border-color: #fcd34d; padding: 3px 6px; }
+#didcomTemp .dt-period select:focus { outline: 2px solid #f59e0b; outline-offset: 1px; }
 /* 小さく表示 */
 #didcomTemp .dt-detail.dt-small .dt-chart { min-height: 190px; }
 #didcomTemp .dt-detail.dt-small .dt-chart svg { height: 190px; }

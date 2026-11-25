@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>温度モニター</title>
-  <link rel="stylesheet" href="didcomTemp.css?v=0.10.3">
+  <link rel="stylesheet" href="didcomTemp.css?v=0.10.4">
 </head>
 <body>
 <div id="didcomTemp">
@@ -14,15 +14,6 @@
       <span id="dt-source" class="dt-badge">-</span>
     </div>
     <div class="dt-controls">
-      <label>期間
-        <select id="dt-hours">
-          <option value="6">直近6時間</option>
-          <option value="12">直近12時間</option>
-          <option value="24" selected>直近24時間</option>
-          <option value="48">直近48時間</option>
-          <option value="168">直近7日</option>
-        </select>
-      </label>
       <label class="dt-check"><input type="checkbox" id="dt-auto" checked> 自動更新 (5分)</label>
       <button id="dt-refresh" class="dt-btn">更新</button>
       <button id="dt-open-settings" class="dt-btn dt-btn-ghost">設定</button>
@@ -64,6 +55,16 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M15 20v-5h5"/></svg><span>小さく表示</span></button>
           <button id="dt-full" class="dt-btn dt-btn-full" title="グラフを画面いっぱいに大きく表示（Escで戻る）">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg><span>大きく表示</span></button>
+          <label class="dt-period" title="グラフに表示する期間">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>期間
+            <select id="dt-hours">
+              <option value="6">直近6時間</option>
+              <option value="12">直近12時間</option>
+              <option value="24" selected>直近24時間</option>
+              <option value="48">直近48時間</option>
+              <option value="168">直近7日</option>
+            </select>
+          </label>
           <button id="dt-save-png" class="dt-btn dt-btn-save dt-btn-png" title="表示中のグラフと統計をPNG画像で保存">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/></svg>画像保存</button>
           <button id="dt-save-pdf" class="dt-btn dt-btn-save dt-btn-pdf" title="表示中のグラフと統計をPDF（A4横）で保存">
@@ -148,6 +149,6 @@
     </div>
   </div>
 </div>
-<script src="didcomTemp.js?v=0.10.3"></script>
+<script src="didcomTemp.js?v=0.10.4"></script>
 </body>
 </html>
