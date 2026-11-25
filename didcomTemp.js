@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.12.0';
+  var VERSION = '0.12.1';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -211,6 +211,13 @@ geotab.addin.didcomTemp = function () {
   // ---------- 集計 ----------
   function isOut(v) { return v < settings.min || v > settings.max; }
   function hasDoor() { return !!(data && data.doorDiags && data.doorDiags.length); }
+  // その車両に期間内のドアセンサーの記録があるか（無ければセンサー未接続の可能性。「閉」「0回」と誤解されないよう区別して表示）
+  function doorData(devId) {
+    var s = (data && data.door || {})[devId] || {};
+    return Object.keys(s).some(function (k) { return s[k] && s[k].length; });
+  }
+  var DOOR_NONE = 'データなし';
+  var DOOR_NONE_NOTE = 'この期間にドアセンサーのデータがありません（ドアセンサーが付いていない可能性があります）';
 
   // ドアが開いていた区間 [{start, end, ongoing}]。値が0以外を「開」とし、doorInvert で反転。
   function doorIntervals(devId) {
@@ -368,7 +375,8 @@ geotab.addin.didcomTemp = function () {
     $('dt-events').innerHTML = events.map(function (e) {
       return '<tr><td>' + esc(names[e.devId]) + '</td><td>' + esc(sensorLabel(e.diag.name)) + '</td><td>' + fmtT(e.start) + '</td>' +
         '<td>' + (e.end ? fmtT(e.end) : '<span class="dt-ongoing">継続中</span>') + '</td><td>' + fmtDur(e.duration) + '</td><td>' + fmtV(e.peak) + '</td>' +
-        '<td>' + (!hasDoor() ? '<span class="dt-muted">未設定</span>' : e.door ? '<span class="dt-door-tag">あり</span>' : '-') + '</td></tr>';
+        '<td>' + (!hasDoor() ? '<span class="dt-muted">未設定</span>' : !doorData(e.devId) ? '<span class="dt-muted" title="' + DOOR_NONE_NOTE + '">' + DOOR_NONE + '</span>'
+          : e.door ? '<span class="dt-door-tag">あり</span>' : '-') + '</td></tr>';
     }).join('') || '<tr><td colspan="7" class="dt-muted">期間内の逸脱はありません</td></tr>';
 
     renderDetail();
@@ -527,7 +535,8 @@ geotab.addin.didcomTemp = function () {
     $('dt-legend').innerHTML = lines.map(function (ln) { return '<span><i style="background:' + ln.c + '"></i>' + esc(sensorLabel(ln.d.name)) + '</span>'; }).join('') +
       '<span><i class="dt-th-swatch"></i>しきい値</span>' +
       (outShown ? '<span><i class="dt-out-swatch" style="background:#dc2626"></i>範囲外（危険）</span>' : '') +
-      (hasDoor() ? '<span><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア開</span>' : '') +
+      (hasDoor() ? (doorData(v.id) ? '<span><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア開</span>'
+        : '<span class="dt-door-none" title="' + DOOR_NONE_NOTE + '"><i class="dt-door-swatch dt-door-swatch-none"></i>ドア：センサーのデータなし（未接続の可能性）</span>') : '') +
       (engine ? '<span><i class="dt-eng-swatch" style="background:' + ENGINE_ON + '"></i>エンジンON</span>' : '') +
       (markersShown ? '<span><i class="dt-dot"></i>計測点</span>' : '') +
       (riseShown ? '<span><i class="dt-rise-swatch" style="background:' + RISE_COLOR + '"></i>急上昇（+' + settings.riseRate + '℃/時以上）</span>' : '') +
@@ -556,7 +565,8 @@ geotab.addin.didcomTemp = function () {
     lines.forEach(function (ln) { ln.vis.forEach(function (p) { if (p.r != null && (maxR == null || p.r > maxR)) { maxR = p.r; maxRT = p.t; } }); });
     var rateStat = ['最大上昇速度', maxR == null ? '-' : fmtRate(maxR) + ' <small class="dt-muted">' + fmtHM(maxRT) + '</small>', 0, isRise(maxR)];
     $('dt-stats').innerHTML = tempStats.concat([rateStat, ['逸脱時間合計', exMs ? fmtDur(exMs) : 'なし']])
-      .concat(hasDoor() ? [['ドア開 回数', doorsVis.length + '回'], ['ドア開 合計', doorMs ? fmtDur(doorMs) : 'なし']] : [])
+      .concat(!hasDoor() ? [] : doorData(v.id) ? [['ドア開 回数', doorsVis.length + '回'], ['ドア開 合計', doorMs ? fmtDur(doorMs) : 'なし']]
+        : [['ドア開', '<span class="dt-muted">センサーのデータなし</span>']])
       .concat(engine ? [['エンジンON 合計', engMs ? fmtDur(engMs) : 'なし']] : [])
       .map(function (p) { return '<div' + (p[2] ? ' class="dt-est"' : p[3] ? ' class="dt-rise"' : '') + '><span>' + p[0] + '</span><strong>' + p[1] + '</strong></div>'; }).join('') +
       (estimated && est.length ? '<p class="dt-est-note">※ 表示範囲内に計測点がないため、最低・最高・平均は範囲の前後の計測値を直線で結んで推定した値です。</p>'
@@ -935,7 +945,9 @@ geotab.addin.didcomTemp = function () {
       var rt = p.r != null ? ' <span class="dt-rate' + (isRise(p.r) ? ' up' : '') + '">' + fmtRate(p.r) + '</span>' : '';
       rows.push('<div>' + sw + label + '<b' + (isOut(p.v) ? ' class="ng"' : '') + '>' + fmtV(p.v) + '</b>' + rt + off + '</div>');
     });
-    if (hasDoor()) {
+    if (hasDoor() && !doorData(selectedId)) {
+      rows.push('<div><i class="dt-door-swatch dt-door-swatch-none"></i>ドア<span class="dt-muted" style="margin-left:8px">センサーのデータなし</span></div>');
+    } else if (hasDoor()) {
       var iv = c.doors.filter(function (d) { return t >= +d.start && t <= +d.end; })[0];
       rows.push('<div><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア<b>' + (iv ? '開' : '閉') + '</b>' +
         (iv ? ' <span class="dt-muted">(' + fmtHM(iv.start) + '〜' + (iv.ongoing ? '開いたまま' : fmtHM(iv.end) + '・' + fmtDur(iv.end - iv.start)) + ')</span>' : '') + '</div>');
@@ -982,7 +994,7 @@ geotab.addin.didcomTemp = function () {
     var lines = [['車両', 'センサー', '開始', '終了', '継続時間(分)', '最高/最低(℃)', '下限(℃)', '上限(℃)', 'ドア開'].map(q).join(',')];
     data.events.forEach(function (e) {
       lines.push([names[e.devId], sensorLabel(e.diag.name), fmtT(e.start), e.end ? fmtT(e.end) : '継続中', Math.round(e.duration / 60000), e.peak, settings.min, settings.max,
-        !hasDoor() ? '未設定' : e.door ? 'あり' : 'なし'].map(q).join(','));
+        !hasDoor() ? '未設定' : !doorData(e.devId) ? DOOR_NONE : e.door ? 'あり' : 'なし'].map(q).join(','));
     });
     var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }); // BOM付き: Excelで文字化けしない
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -1095,7 +1107,7 @@ geotab.addin.didcomTemp = function () {
       y += 26;
       if (!shown.length) { text('この期間の逸脱はありません', PAD + 10, y + 17, 12, '#6b7280'); y += 26; }
       shown.forEach(function (e) {
-        var vals = [sensorLabel(e.diag.name), fmtFull(e.start), e.end ? fmtFull(e.end) : '継続中', fmtDur(e.duration), fmtV(e.peak), !hasDoor() ? '未設定' : e.door ? 'あり' : '-'];
+        var vals = [sensorLabel(e.diag.name), fmtFull(e.start), e.end ? fmtFull(e.end) : '継続中', fmtDur(e.duration), fmtV(e.peak), !hasDoor() ? '未設定' : !doorData(e.devId) ? DOOR_NONE : e.door ? 'あり' : '-'];
         vals.forEach(function (s, i) { text(s, PAD + 10 + cols[i][1], y + 17, 12, (i === 2 && !e.end) || i === 4 ? '#dc2626' : '#1f2937'); });
         g.fillStyle = '#e5e7eb'; g.fillRect(PAD, y + 25, CW, 1); y += 26;
       });

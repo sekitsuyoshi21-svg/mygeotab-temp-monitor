@@ -159,6 +159,8 @@
 #didcomTemp .dt-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; margin-top: 4px; }
 #didcomTemp .dt-legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; }
 #didcomTemp .dt-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 10px; }
+#didcomTemp .dt-legend .dt-door-none { color: #92400e; background: #fffbeb; border: 1px dashed #f59e0b; border-radius: 10px; padding: 0 8px; }
+#didcomTemp i.dt-door-swatch-none { background: #fff !important; border: 1px dashed #ca8a04 !important; }
 #didcomTemp .dt-legend i.dt-eng-swatch { height: 8px; border-radius: 2px; }
 #didcomTemp .dt-legend i.dt-door-swatch { height: 10px; border: 1px solid rgba(202,138,4,.6); }
 #didcomTemp .dt-door-tag { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 10px; background: #fef3c7; color: #92400e; }
