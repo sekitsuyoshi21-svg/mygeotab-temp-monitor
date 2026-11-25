@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.10.4';
+  var VERSION = '0.10.5';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -675,6 +675,42 @@ geotab.addin.didcomTemp = function () {
     if (region && city && PREF_RE.test(region)) return shortAddr(region + city);
     return shortAddr(a.formattedAddress || [region, city, a.street].filter(Boolean).join(' '));
   }
+  // GetAddresses の結果から番地までの住所を作る（郵便番号・国名は除く）。納品先の特定用
+  function fullFromResult(a) {
+    if (!a) return '';
+    var f = a.formattedAddress || [a.region || a.state, a.city, a.street].filter(Boolean).join(' ');
+    f = cleanAddr(String(f).replace(/^\s*(日本|Japan)\s*[、,]?\s*/i, ''));
+    var nospace = f.replace(/\s+/g, ''), pm = PREF_RE.exec(nospace);
+    return pm ? nospace.slice(pm.index) : f;    // 日本語表記は都道府県から。英語表記などはそのまま
+  }
+  // 時刻 t を含む停車区間（位置記録の速度から判定）。走行中なら null
+  function stopAt(devId, pos) {
+    var a = data && data.logs && data.logs[devId];
+    if (!a || !pos || pos.spd > 3) return null;
+    var i = a.indexOf(pos); if (i < 0) return null;
+    var s = i; while (s > 0 && a[s - 1].spd <= 3) s--;
+    var e = i + 1; while (e < a.length && a[e].spd <= 3) e++;
+    return { start: a[s].t, end: e < a.length ? a[e].t : null };
+  }
+  // 時刻 t の温度（計測点の間は直線で結んだ値、なければ45分以内の最寄りの計測値）
+  function valAt(arr, t) {
+    var ip = interp(arr, t); if (ip) return ip.v;
+    var p = nearest(arr, t); return p && Math.abs(p.t - t) <= 45 * 60000 ? p.v : null;
+  }
+  function stopRow(st) {
+    var end = st.end || +data.to, dur = end - st.start;
+    if (dur < 3 * 60000) return '';
+    var c = chartCtx, chg = [];
+    (c ? c.lines : []).forEach(function (ln) {
+      var v0 = valAt(ln.a, st.start), v1 = valAt(ln.a, end); if (v0 == null || v1 == null) return;
+      var d = v1 - v0, cls = d >= 1 ? ' up' : d <= -1 ? ' down' : '';
+      chg.push('<span class="dt-stop-sensor">' + esc(sensorLabel(ln.d.name)) + ' ' + v0.toFixed(1) + '→' + v1.toFixed(1) + '℃' +
+        ' <span class="dt-stop-chg' + cls + '">' + (d >= 0 ? '+' : '') + d.toFixed(1) + '℃</span></span>');
+    });
+    return '<div class="dt-tip-stop"><span class="dt-tip-place-label">停車</span>' + fmtHM(new Date(st.start)) + '〜' +
+      (st.end ? fmtHM(new Date(st.end)) : '停車中') + '（' + fmtDur(dur) + '）' +
+      (chg.length ? '<div class="dt-stop-temps"><span class="dt-tip-place-label">停車中の変化</span>' + chg.join('　') + '</div>' : '') + '</div>';
+  }
   // 住所（キャッシュ済みなら文字列、取得中なら null）
   function addressFor(pos) {
     var key = pos.lat.toFixed(4) + ',' + pos.lon.toFixed(4);
@@ -684,7 +720,7 @@ geotab.addin.didcomTemp = function () {
       addrPending[key] = true;
       call('GetAddresses', { coordinates: [{ x: pos.lon, y: pos.lat }] }).then(function (r) {
         var a = r && r[0];
-        addrCache[key] = shortFromResult(a);
+        addrCache[key] = fullFromResult(a) || shortFromResult(a);   // 吹き出しでは番地まで表示
       }, function () { addrCache[key] = ''; })
         .then(function () { delete addrPending[key]; if (lastHoverEv) onHover(lastHoverEv); });
     }
@@ -700,6 +736,7 @@ geotab.addin.didcomTemp = function () {
       body = (ad === null ? '<span class="dt-muted">住所を取得中…</span>' : esc(ad || (pos.lat.toFixed(5) + ', ' + pos.lon.toFixed(5)))) +
         ' <span class="dt-muted">（' + (pos.spd > 3 ? '走行中 ' + Math.round(pos.spd) + 'km/h' : '停車中') + '）</span>' +
         (Math.abs(pos.t - t) > 30 * 60000 ? ' <span class="dt-muted">' + fmtT(new Date(pos.t)) + ' 時点の位置</span>' : '');
+      var st = stopAt(selectedId, pos); if (st) body += stopRow(st);
     }
     return '<div class="dt-tip-place"><span class="dt-tip-place-label">場所</span>' + body + '</div>';
   }
@@ -718,7 +755,9 @@ geotab.addin.didcomTemp = function () {
     var c = demoCity(devId), out = [], seed = devId.length * 31 + devId.charCodeAt(devId.length - 1);
     for (var t = +data.from; t <= +data.to; t += 10 * 60000) {
       var h = (new Date(t + 9 * 3600e3).getUTCHours()), driving = h >= 6 && h < 19;
-      if (!driving && out.length && out[out.length - 1].spd === 0) continue;   // 停車中は記録しない
+      var prev = out[out.length - 1], stop = !driving || (Math.floor(t / 600000) + seed) % 12 < 2;   // 日中も2時間ごとに20分の納品停車
+      if (stop && prev && prev.spd === 0) continue;   // 停車中は記録しない
+      if (stop && prev) { out.push({ t: t, lat: prev.lat, lon: prev.lon, spd: 0 }); continue; }
       var k = (t / 3600e3 + seed) * 0.35;
       out.push({ t: t, lat: c[0] + Math.sin(k) * 0.05, lon: c[1] + Math.cos(k * 1.3) * 0.06, spd: driving ? 25 + Math.round(Math.abs(Math.sin(k * 3)) * 35) : 0 });
     }
@@ -731,7 +770,8 @@ geotab.addin.didcomTemp = function () {
       if (!best || d < best.d) best = { c: c, d: d };
     });
     var wards = best.c[3], i = Math.abs(Math.round(pos.lat * 1000 + pos.lon * 1000)) % wards.length;
-    return best.c[2] + wards[i] + '（デモ）';
+    var n = Math.abs(Math.round(pos.lat * 1e4 + pos.lon * 1e4));
+    return best.c[2] + wards[i] + (n % 5 + 1) + '丁目' + (n % 23 + 1) + '-' + (n % 9 + 1) + '（デモ）';
   }
 
   function onHover(ev) {

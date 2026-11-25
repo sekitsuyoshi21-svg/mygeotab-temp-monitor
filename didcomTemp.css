@@ -107,6 +107,11 @@
 #didcomTemp .dt-tip b.dt-est-val { font-style: italic; }
 #didcomTemp .dt-tip-place { margin-top: 3px; padding-top: 4px; border-top: 1px dashed var(--line); white-space: nowrap; }
 #didcomTemp .dt-tip-place-label { color: var(--muted); margin-right: 8px; }
+#didcomTemp .dt-tip-stop { margin-top: 2px; }
+#didcomTemp .dt-stop-temps { margin-top: 1px; }
+#didcomTemp .dt-stop-chg { font-weight: 700; }
+#didcomTemp .dt-stop-chg.up { color: var(--ng); }
+#didcomTemp .dt-stop-chg.down { color: #2563eb; }
 #didcomTemp .dt-est-tag { display: inline-block; margin-left: 6px; font-size: 10px; padding: 0 6px; border-radius: 8px; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; line-height: 1.6; }
 #didcomTemp .dt-stats div.dt-est { background: #fffbeb; border: 1px dashed #f59e0b; }
 #didcomTemp .dt-stats div.dt-est span { color: #92400e; }
