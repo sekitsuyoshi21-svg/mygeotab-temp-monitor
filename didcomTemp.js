@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.10.5';
+  var VERSION = '0.11.0';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -316,7 +316,7 @@ geotab.addin.didcomTemp = function () {
     $('dt-range-label').textContent = '基準 ' + settings.min + '〜' + settings.max + '℃';
     var chart = $('dt-chart');
     if (!v) { chart.innerHTML = '<div class="empty">車両を選択してください</div>'; $('dt-legend').innerHTML = ''; $('dt-stats').innerHTML = ''; return; }
-    if (!forceW) ensureLogs(v.id);   // 吹き出しの「場所」用に位置記録を先読み
+    if (!forceW) { ensureLogs(v.id); ensureIgn(v.id); }   // 吹き出しの「場所」用に位置記録、エンジンの帯用にイグニッションを先読み
 
     var s = data.series[v.id] || {}, lines = [];
     data.diagnostics.forEach(function (d, i) { var a = s[d.id]; if (a && a.length) lines.push({ d: d, a: a, c: COLORS[i % COLORS.length] }); });
@@ -356,7 +356,8 @@ geotab.addin.didcomTemp = function () {
     // 「大きく表示」中は画面の高さに合わせて縦も大きくする（レポート出力時は常に300）
     var H = forceW ? 300 : sizeMode === 'full' ? Math.max(300, Math.round(visibleHeight() - fullReserve()))
       : sizeMode === 'small' ? 190 : 300;
-    var W = forceW || Math.max(360, Math.round(chart.clientWidth || 800)), bigY = !forceW && sizeMode === 'full', L = bigY ? 58 : 44, R = 12, T = 12, B = 44;
+    var W = forceW || Math.max(360, Math.round(chart.clientWidth || 800)), bigY = !forceW && sizeMode === 'full', L = bigY ? 58 : 44, R = 12, T = 12;
+    var engine = engineIntervals(v.id), E = engine ? 16 : 0, B = 44 + E;   // エンジンの帯は時間軸のすぐ上に別の段で表示
     var dmin = Math.min.apply(null, scaleVals), dmax = Math.max.apply(null, scaleVals), lo, hi;
     if (zoom) { var pad = Math.max(0.5, (dmax - dmin) * 0.1); lo = dmin - pad; hi = dmax + pad; }   // 拡大中はデータに合わせる
     else { lo = Math.min(dmin, settings.min) - 2; hi = Math.max(dmax, settings.max) + 2; }          // 全体表示はしきい値も含める
@@ -394,7 +395,17 @@ geotab.addin.didcomTemp = function () {
     var STEPS = [5 * MIN, 10 * MIN, 15 * MIN, 30 * MIN, HR, 2 * HR, 3 * HR, 4 * HR, 6 * HR, 12 * HR, 24 * HR, 48 * HR];
     var maxTicks = Math.max(2, Math.floor(PW / 80)), step = STEPS[STEPS.length - 1];
     for (var si = 0; si < STEPS.length; si++) { if ((t1 - t0) / STEPS[si] <= maxTicks) { step = STEPS[si]; break; } }
-    var axisY = H - B;
+    var axisY = H - B + E, engMs = 0, engVis = [];
+    if (engine) {   // エンジンの段：OFFは薄い灰色、ONは緑
+      var ey = H - B + 3, eh = E - 6;
+      svg += '<text x="' + (L - 4) + '" y="' + (ey + eh - 1) + '" font-size="9" text-anchor="end" fill="#374151">エンジン</text>' +
+        '<rect x="' + L + '" y="' + ey + '" width="' + PW + '" height="' + eh + '" fill="#e5e7eb" rx="2"/>';
+      engine.forEach(function (iv) {
+        var s0 = Math.max(+iv.start, t0), s1 = Math.min(+iv.end, t1); if (s1 <= s0) return;
+        engVis.push(iv); engMs += s1 - s0;
+        svg += '<rect class="dt-eng" x="' + x(s0).toFixed(1) + '" y="' + ey + '" width="' + Math.max(1.5, x(s1) - x(s0)).toFixed(1) + '" height="' + eh + '" fill="' + ENGINE_ON + '" rx="2"/>';
+      });
+    }
     svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + axisY + '" y2="' + axisY + '" stroke="#9ca3af"/>';
     var prevDay = null;
     for (var tt = Math.ceil((t0 + JST) / step) * step - JST; tt <= t1; tt += step) {
@@ -448,11 +459,12 @@ geotab.addin.didcomTemp = function () {
       (!forceW && sizeMode === 'full' ? '<div class="dt-chart-tools">' +
         '<button type="button" data-size="small" title="グラフを小さく表示">' + ICON_SHRINK + '小さく表示</button>' +
         '<button type="button" data-size="normal" title="標準の大きさに戻す（Esc）">' + ICON_SHRINK + '標準に戻す</button></div>' : '');
-    chartCtx = { W: W, H: H, L: L, R: R, T: T, B: B, t0: t0, t1: t1, x: x, y: y, lines: lines, doors: doors };
+    chartCtx = { W: W, H: H, L: L, R: R, T: T, B: B, t0: t0, t1: t1, x: x, y: y, lines: lines, doors: doors, engine: engine };
     $('dt-legend').innerHTML = lines.map(function (ln) { return '<span><i style="background:' + ln.c + '"></i>' + esc(sensorLabel(ln.d.name)) + '</span>'; }).join('') +
       '<span><i class="dt-th-swatch"></i>しきい値</span>' +
       (outShown ? '<span><i class="dt-out-swatch" style="background:#dc2626"></i>範囲外（危険）</span>' : '') +
       (hasDoor() ? '<span><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア開</span>' : '') +
+      (engine ? '<span><i class="dt-eng-swatch" style="background:' + ENGINE_ON + '"></i>エンジンON</span>' : '') +
       (markersShown ? '<span><i class="dt-dot"></i>計測点</span>' : '') +
       (riseShown ? '<span><i class="dt-rise-swatch" style="background:' + RISE_COLOR + '"></i>急上昇（+' + settings.riseRate + '℃/時以上）</span>' : '') +
       '<span class="dt-hint">' +
@@ -481,6 +493,7 @@ geotab.addin.didcomTemp = function () {
     var rateStat = ['最大上昇速度', maxR == null ? '-' : fmtRate(maxR) + ' <small class="dt-muted">' + fmtHM(maxRT) + '</small>', 0, isRise(maxR)];
     $('dt-stats').innerHTML = tempStats.concat([rateStat, ['逸脱時間合計', exMs ? fmtDur(exMs) : 'なし']])
       .concat(hasDoor() ? [['ドア開 回数', doorsVis.length + '回'], ['ドア開 合計', doorMs ? fmtDur(doorMs) : 'なし']] : [])
+      .concat(engine ? [['エンジンON 合計', engMs ? fmtDur(engMs) : 'なし']] : [])
       .map(function (p) { return '<div' + (p[2] ? ' class="dt-est"' : p[3] ? ' class="dt-rise"' : '') + '><span>' + p[0] + '</span><strong>' + p[1] + '</strong></div>'; }).join('') +
       (estimated && est.length ? '<p class="dt-est-note">※ 表示範囲内に計測点がないため、最低・最高・平均は範囲の前後の計測値を直線で結んで推定した値です。</p>'
         : estimated ? '<p class="dt-est-note">※ 表示範囲内に計測点がなく、前後の計測値も離れすぎているため推定できません。</p>' : '');
@@ -636,6 +649,45 @@ geotab.addin.didcomTemp = function () {
           .sort(function (a, b) { return a.t - b.t; });
       }, function () { d.logs[devId] = []; })
       .then(function () { logsLoading[devId] = false; if (lastHoverEv && d === data) onHover(lastHoverEv); });
+  }
+
+  // ---------- エンジンのON/OFF（GOデバイスのイグニッション） ----------
+  var ignLoading = {}, ENGINE_ON = '#16a34a';
+  // 選択中の車両のイグニッション記録を期間分1回だけ読み込む（期間開始時点の状態を知るため1日前から）
+  function ensureIgn(devId) {
+    if (!data || !devId) return;
+    data.ign = data.ign || {};
+    if (data.ign[devId] || ignLoading[devId]) return;
+    if (demo) { data.ign[devId] = demoIgn(devId); return; }
+    var d = data; ignLoading[devId] = true;
+    call('Get', { typeName: 'StatusData', search: { deviceSearch: { id: devId }, diagnosticSearch: { id: 'DiagnosticIgnitionId' },
+      fromDate: new Date(+d.from - 24 * 3600e3).toISOString(), toDate: d.to.toISOString() }, resultsLimit: 50000 })
+      .then(function (list) {
+        d.ign[devId] = (list || []).filter(function (s) { return typeof s.data === 'number'; })
+          .map(function (s) { return { t: +new Date(s.dateTime), v: s.data }; }).sort(function (a, b) { return a.t - b.t; });
+      }, function () { d.ign[devId] = []; })
+      .then(function () { ignLoading[devId] = false; if (d === data && selectedId === devId) renderDetail(); });
+  }
+  // エンジンONの区間 [{start, end, ongoing}]。記録が無ければ null（帯を出さない）
+  function engineIntervals(devId) {
+    var a = data && data.ign && data.ign[devId];
+    if (!a || !a.length) return null;
+    var out = [], cur = null;
+    a.forEach(function (p) {
+      if (p.v !== 0 && !cur) cur = { start: p.t };
+      else if (p.v === 0 && cur) { cur.end = p.t; out.push(cur); cur = null; }
+    });
+    if (cur) { cur.end = +data.to; cur.ongoing = true; out.push(cur); }
+    return out;
+  }
+  // デモ用：走行中はON、納品停車は半分ほどエンジンを止める、夜間はOFF
+  function demoIgn(devId) {
+    var logs = (data.logs && data.logs[devId]) || [], out = [], on = null;
+    logs.forEach(function (r, i) {
+      var h = new Date(r.t + 9 * 3600e3).getUTCHours(), want = r.spd > 0 || (h >= 6 && h < 19 && i % 2 === 0);
+      if (want !== on) { out.push({ t: r.t - (want ? 2 * 60000 : -3 * 60000), v: want ? 1 : 0 }); on = want; }
+    });
+    return out;
   }
 
   // 時刻 t の位置：直前の記録（停車中は記録が止まるため）。直後10分以内の記録の方が近ければそちら
@@ -820,6 +872,11 @@ geotab.addin.didcomTemp = function () {
       var iv = c.doors.filter(function (d) { return t >= +d.start && t <= +d.end; })[0];
       rows.push('<div><i class="dt-door-swatch" style="background:' + DOOR_COLOR + '"></i>ドア<b>' + (iv ? '開' : '閉') + '</b>' +
         (iv ? ' <span class="dt-muted">(' + fmtHM(iv.start) + '〜' + (iv.ongoing ? '開いたまま' : fmtHM(iv.end) + '・' + fmtDur(iv.end - iv.start)) + ')</span>' : '') + '</div>');
+    }
+    if (c.engine) {
+      var eng = c.engine.filter(function (d) { return t >= +d.start && t <= +d.end; })[0];
+      rows.push('<div><i style="background:' + (eng ? ENGINE_ON : '#d1d5db') + '"></i>エンジン<b>' + (eng ? 'ON' : 'OFF') + '</b>' +
+        (eng ? ' <span class="dt-muted">(' + fmtHM(new Date(eng.start)) + '〜' + (eng.ongoing ? 'ON のまま' : fmtHM(new Date(eng.end)) + '・' + fmtDur(eng.end - eng.start)) + ')</span>' : '') + '</div>');
     }
     rows.push(placeRow(t));
     tip.innerHTML = '<div class="dt-tip-time">' + fmtT(new Date(t)) + (snapped ? ' <span class="dt-muted">計測</span>' : ' <span class="dt-est-tag">計測点なし</span>') + '</div>' + rows.join('');
