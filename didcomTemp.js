@@ -22,7 +22,7 @@ geotab.addin.didcomTemp = function () {
   var DOOR_COLOR = 'rgba(234,179,8,.28)', DOOR_LOOKBACK_MS = 15 * 60000; // 逸脱開始の15分前までのドア開を関連ありとみなす
   var COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea'];
   var AUTO_MS = 5 * 60 * 1000;
-  var VERSION = '0.11.0';
+  var VERSION = '0.11.1';
 
   var api = null, demo = false, storageKey = 'didcomTemp:demo';
   var settings = Object.assign({}, DEFAULTS);
@@ -33,7 +33,12 @@ geotab.addin.didcomTemp = function () {
   // ---------- ユーティリティ ----------
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function fmtT(d) { return d ? d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'; }
-  function fmtDur(ms) { var m = Math.round(ms / 60000); return m < 60 ? m + '分' : Math.floor(m / 60) + '時間' + (m % 60) + '分'; }
+  function fmtDur(ms) {
+    var m = Math.round(ms / 60000);
+    if (m < 60) return m + '分';
+    if (m < 1440) return Math.floor(m / 60) + '時間' + (m % 60) + '分';
+    return Math.floor(m / 1440) + '日' + Math.floor((m % 1440) / 60) + '時間' + (m % 60) + '分';   // 24時間以上は日数で
+  }
   function fmtV(v) { return v == null ? '-' : v.toFixed(1) + '℃'; }
   function ago(d) { if (!d) return '-'; var m = Math.round((Date.now() - d) / 60000); return m < 1 ? 'たった今' : m < 60 ? m + '分前' : m < 1440 ? Math.floor(m / 60) + '時間前' : Math.floor(m / 1440) + '日前'; }
   // 「Remote probe 1 temperature」/「リモートプローブ1温度」など英語・日本語どちらの名称にも対応
@@ -759,8 +764,11 @@ geotab.addin.didcomTemp = function () {
       chg.push('<span class="dt-stop-sensor">' + esc(sensorLabel(ln.d.name)) + ' ' + v0.toFixed(1) + '→' + v1.toFixed(1) + '℃' +
         ' <span class="dt-stop-chg' + cls + '">' + (d >= 0 ? '+' : '') + d.toFixed(1) + '℃</span></span>');
     });
-    return '<div class="dt-tip-stop"><span class="dt-tip-place-label">停車</span>' + fmtHM(new Date(st.start)) + '〜' +
-      (st.end ? fmtHM(new Date(st.end)) : '停車中') + '（' + fmtDur(dur) + '）' +
+    // 日をまたぐ停車は日付も表示（例：11/20 05:20〜11/21 18:28）
+    var jd = function (ms) { return new Date(ms + 9 * 3600e3).toISOString().slice(0, 10); };
+    var multiDay = jd(st.start) !== jd(end), fmt = multiDay ? function (ms) { return fmtT(new Date(ms)); } : function (ms) { return fmtHM(new Date(ms)); };
+    return '<div class="dt-tip-stop"><span class="dt-tip-place-label">停車</span>' + fmt(st.start) + '〜' +
+      (st.end ? fmt(st.end) : '停車中') + '（' + fmtDur(dur) + '）' +
       (chg.length ? '<div class="dt-stop-temps"><span class="dt-tip-place-label">停車中の変化</span>' + chg.join('　') + '</div>' : '') + '</div>';
   }
   // 住所（キャッシュ済みなら文字列、取得中なら null）
